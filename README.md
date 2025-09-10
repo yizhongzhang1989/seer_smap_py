@@ -1,101 +1,261 @@
-# SMAP Parser Project
+# SEER Robot Control Platform
 
-This project provides tools for reading and parsing SMAP files, which are JSON-based map files used by robotics applications.
+A comprehensive platform for controlling robots and visualizing SMAP (Simultaneous Mapping and Planning) files. This project provides both command-line tools and a modern web interface for robot navigation, map management, and real-time control.
 
-## Project Structure
+## 🤖 Overview
 
-1. `message_map.proto` - Protobuf description file for the map format
-2. `maps/` - Directory containing sample map files
-3. `MapParser/` - C++ example code for reading maps using Protobuf
-4. **`seer_smap.py`** - **Core SMAP module with data classes, reader, and visualizer**
-5. **`view_smaps.py`** - **Simple batch visualization tool**
+SEER Robot Control Platform enables you to:
+- **Control robots remotely** through an intuitive web interface
+- **Upload and visualize SMAP files** with interactive maps
+- **Monitor robot status** and command execution in real-time
+- **Manage navigation maps** with drag-and-drop functionality
+- **Process SMAP files** using powerful Python tools
 
-## Python Modules
+The platform supports JSON-based SMAP files used by robotics applications for navigation and mapping.
 
-### seer_smap.py
-This module contains the complete SMAP functionality including data classes, reader, and visualizer:
+## 🚀 Quick Start
 
-**Data Classes:**
-- `Position` - 2D position with x, y coordinates
-- `MapHeader` - Map metadata (type, name, bounds, resolution, version)  
-- `RSSIPos` - RSSI reflector points
-- `MapLine` - Line segments with start/end positions
-- `Property` - Key-value properties with type information
-- `AdvancedPoint` - Points with class, instance name, and properties
-- `AdvancedLine` - Lines with class, instance name, and properties  
-- `AdvancedCurve` - Bezier curves with control points
-- `AdvancedArea` - Areas defined by polygon vertices
-- `SmapData` - Complete SMAP file data structure
+### Prerequisites
+- Python 3.7 or higher
+- pip package manager
 
-**Core Classes:**
-- `SmapReader` - Flexible SMAP file parsing with both standard and flexible parsing methods
-- `SmapVisualizer` - Matplotlib-based map visualization with full rendering capabilities
+### Installation
 
-### read_smap.py
-Command-line interface for single file processing:
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yizhongzhang1989/seer_smap_py.git
+   cd seer_smap_py
+   ```
 
-- Command-line argument parsing for individual files
-- Single file processing with detailed output
-- Backward compatibility for existing scripts
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### view_smaps.py
-Simple batch visualization tool:
+3. **Start the web interface:**
+   ```bash
+   python app.py
+   ```
 
-- Automatically finds all SMAP files in the `maps/` directory
-- Displays visualizations for each file interactively
-- Shows basic file information and point counts
-- Minimal interface for quick viewing of all maps
+4. **Open your browser and navigate to:**
+   ```
+   http://localhost:5000
+   ```
 
-## Usage Examples
+## 🕹️ Using the Web Interface
 
-### Complete SMAP Operations
+### Robot Control Center (Left Panel)
+
+**📡 Connection Status**
+- Visual indicator showing robot connection status
+- Real-time status updates
+
+**🗺️ Map Management**
+- **Upload Maps**: Drag and drop SMAP files or click to browse
+- **Available Maps**: Quick access to existing maps in the `maps/` directory
+- **Map Information**: View detailed map statistics (resolution, points, bounds)
+
+**🎮 Robot Controls**
+- **Directional Controls**: Forward, Backward, Left, Right
+- **Emergency Stop**: Immediate robot halt
+- **Home Command**: Return robot to home position
+- **Real-time Feedback**: All commands logged with timestamps
+
+**📋 Command Log**
+- Real-time logging of all robot commands
+- Success/error status for each operation
+- Timestamp tracking for debugging
+
+### Map Visualization (Right Panel)
+
+**🖼️ Interactive Map Display**
+- High-quality visualization of SMAP files
+- Real-time rendering with proper scaling
+- Color-coded elements:
+  - **Black dots**: Obstacles and walls
+  - **Blue lines**: Normal navigation paths
+  - **Red points**: Advanced waypoints
+  - **Green lines**: Priority routes
+
+**📊 Map Information**
+- Map name and type
+- Resolution and coordinate bounds
+- Point counts (normal and advanced)
+- Real-time map statistics
+
+## 💻 Command Line Tools
+
+For developers and advanced users:
+
+### Batch Map Viewing
+```bash
+# View all maps in the maps/ directory
+python view_smaps.py
+```
+
+### Programmatic Usage
 ```python
 from seer_smap import SmapReader, SmapVisualizer
 
-# Read and visualize
+# Load and visualize a map
 reader = SmapReader()
 visualizer = SmapVisualizer()
-data = reader.read_file("maps/1.smap")
+data = reader.read_file("maps/example.smap")
 visualizer.visualize_map(data, save_path="output.png")
 ```
 
-### Batch Processing
+## 📁 Project Structure
+
+```
+seer_smap_py/
+├── 🤖 app.py                    # Flask web application (main robot control interface)
+├── 🛠️ seer_smap.py              # Core SMAP toolkit (data classes, reader, visualizer)
+├── 👀 view_smaps.py             # Batch map viewer for command line
+├── 📋 requirements.txt          # Python dependencies
+├── 🗂️ maps/                     # Sample SMAP files for testing
+├── 🌐 templates/               # Web interface HTML templates
+├── 📁 temp/                    # Temporary files (uploads, generated images)
+├── 🔧 MapParser/               # C++ example code
+└── 📄 message_map.proto        # Protocol buffer definitions
+```
+
+### Key Components
+
+**🤖 `app.py` - Web Robot Control Interface**
+- Flask web application with modern responsive UI
+- Real-time robot control with directional commands
+- Drag & drop SMAP file upload
+- Live map visualization and statistics
+- Command logging and status monitoring
+- RESTful API for robot communication
+
+**🛠️ `seer_smap.py` - Core SMAP Toolkit**
+
+**🛠️ `seer_smap.py` - Core SMAP Toolkit**
+- Complete SMAP data structures and parsing
+- High-performance file reading with flexible/standard modes
+- Professional matplotlib-based map visualization
+- Comprehensive data classes for all SMAP elements
+
+**👀 `view_smaps.py` - Batch Map Viewer**
+- Command-line tool for quick map overview
+- Batch processing of entire map directories
+- Interactive visualization display
+
+## 🔧 API Reference
+
+### Robot Control Endpoints
+
+The web interface communicates with robots through these RESTful endpoints:
+
+```http
+POST /robot_command
+Content-Type: application/json
+
+{
+  "command": "move_forward" | "move_backward" | "turn_left" | "turn_right" | "stop" | "go_home"
+}
+```
+
+### Map Management Endpoints
+
+```http
+POST /upload_smap          # Upload new SMAP files
+GET  /get_available_maps    # List available maps
+GET  /load_map/<filename>   # Load specific map
+GET  /get_map_image        # Get current map visualization
+```
+
+## 🎯 Use Cases
+
+### Remote Robot Operation
+- Control robots from any device with a web browser
+- Monitor robot status and navigation in real-time
+- Upload new maps for robot navigation
+- Emergency stop capabilities
+
+### Map Development and Testing
+- Visualize and validate SMAP files before deployment
+- Batch process multiple maps for quality assurance
+- Interactive map exploration and analysis
+
+### Research and Development
+- Rapid prototyping of robot navigation algorithms
+- Map format validation and testing
+- Integration with existing robotics workflows
+
+## ⚙️ Configuration
+
+### Environment Variables
 ```bash
-# Simple batch viewing - shows all maps interactively
-python view_smaps.py
+FLASK_ENV=development    # Enable debug mode
+FLASK_HOST=0.0.0.0      # Server bind address
+FLASK_PORT=5000         # Server port
 ```
 
-### Command Line Usage
+### File Management
+- **Maps Directory**: `maps/` - Permanent sample files
+- **Temp Directory**: `temp/` - Uploaded files (auto-cleaned after 1 hour)
+- **Max Upload Size**: 16MB per file
+
+## 🛠️ Development
+
+### Adding New Robot Commands
+1. Add command logic to `/robot_command` endpoint in `app.py`
+2. Update the web interface buttons in `templates/index.html`
+3. Add corresponding JavaScript handlers
+
+### Extending SMAP Support
+1. Modify data classes in `seer_smap.py`
+2. Update the `SmapReader` parsing logic
+3. Enhance `SmapVisualizer` rendering as needed
+
+## 📝 SMAP Data Structure
+
+**Core Data Classes:**
+- `Position` - 2D coordinates (x, y)
+- `MapHeader` - Map metadata (type, name, bounds, resolution, version)  
+- `SmapData` - Complete map data structure
+- `RSSIPos` - RSSI reflector points for localization
+- `MapLine` - Navigation path segments
+- `AdvancedPoint` - Waypoints with metadata and properties
+- `AdvancedLine` - Priority navigation routes
+- `AdvancedCurve` - Bezier curve paths
+- `AdvancedArea` - Defined operational zones
+
+**File Format:** JSON-based with flexible parsing support for various SMAP versions
+
+## 🚨 Troubleshooting
+
+### Web Interface Issues
+- **Can't access web interface**: Check if Flask is running on `http://localhost:5000`
+- **Map not loading**: Verify SMAP file format and check browser console for errors
+- **Upload fails**: Ensure file is under 16MB and has `.smap` extension
+
+### Robot Connection Issues
+- **Commands not responding**: Check robot network connectivity and API endpoints
+- **Status not updating**: Verify robot is broadcasting status information
+
+### Map Visualization Issues
+- **Map appears blank**: Check if SMAP file contains valid coordinate data
+- **Visualization errors**: Ensure matplotlib dependencies are properly installed
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and test thoroughly
+4. Submit a pull request with a clear description
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🎉 Getting Started
+
+Ready to control your robot? Just run:
 ```bash
-# Simple batch viewing (shows all maps interactively)
-python view_smaps.py
+python app.py
 ```
 
-## Benefits of Clean Module Structure
-
-- **Core Module**: `seer_smap.py` contains all essential SMAP functionality (classes + reader + visualizer)
-- **Simple Tool**: `view_smaps.py` provides quick batch visualization of all maps
-- **Clean Architecture**: Minimal, focused codebase with clear separation of concerns
-- **Easy Integration**: Import complete SMAP toolkit from one module
-
-## Using the SMAP Toolkit
-
-The project now consists of just two Python files:
-
-1. **`seer_smap.py`** - Import this module to use SMAP functionality in your projects
-2. **`view_smaps.py`** - Run this script to quickly view all maps in the maps/ directory
-
-### Example Integration
-```python
-from seer_smap import SmapReader, SmapVisualizer, SmapData, Position
-
-# Create map data programmatically  
-# Read and process SMAP files
-# Visualize maps with matplotlib
-# Build custom SMAP processing tools
-```
-
-### Quick Viewing
-```bash
-python view_smaps.py  # Shows all maps in maps/ directory
-```
+Then open `http://localhost:5000` and start exploring! 🚀
