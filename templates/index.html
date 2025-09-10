@@ -404,10 +404,10 @@
             if (isPolling) return;
             
             isPolling = true;
-            console.log('Starting position polling at 5Hz...');
+            console.log('Starting position polling at 1Hz...');
             
-            // Poll every 200ms (5Hz)
-            positionPollingInterval = setInterval(pollRobotPosition, 200);
+            // Poll every 1000ms (1Hz)
+            positionPollingInterval = setInterval(pollRobotPosition, 1000);
             
             // Also poll immediately
             pollRobotPosition();
