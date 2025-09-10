@@ -232,10 +232,11 @@ class SeerController:
             self.stats['successful_queries'] += 1
             self.stats['last_update'] = time.time()
             
-            # Just print (x, y) for position packets
+            # Just print (x, y, angle) for position packets
             x = result.get('x', 0)
             y = result.get('y', 0)
-            print(f"({x}, {y})")
+            angle = result.get('angle', 0)
+            print(f"({x}, {y}, {angle})")
             
             # Update position data
             with self.position_lock:

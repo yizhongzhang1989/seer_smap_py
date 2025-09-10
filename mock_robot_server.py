@@ -37,6 +37,10 @@ class MockRobotServer:
             'current_station': None,
             'timestamp': time.time()
         }
+        
+        # Position update thread for continuous movement simulation
+        self.position_thread = None
+        self.position_lock = threading.Lock()
     
     def pack_message(self, req_id: int, msg_type: int, msg: Dict = None) -> bytes:
         """Pack message according to SEER protocol format"""
@@ -96,23 +100,38 @@ class MockRobotServer:
         radius = 1.0
         
         # Calculate position on circle
-        self.position['x'] = center_x + radius * math.cos(angle)
-        self.position['y'] = center_y + radius * math.sin(angle)
+        new_x = center_x + radius * math.cos(angle)
+        new_y = center_y + radius * math.sin(angle)
         
-        # Robot's orientation angle (facing direction of movement)
-        # For clockwise motion, tangent direction is angle - π/2
-        self.position['angle'] = angle - math.pi/2
+        # Robot's heading angle (direction of movement relative to x-axis)
+        # For clockwise circular motion, the robot faces tangent to the circle
+        # The velocity vector direction is the derivative of position
+        velocity_angle = angle - math.pi / 2  # Tangent direction for clockwise motion
         
-        # Keep confidence stable
-        self.position['confidence'] = 0.95
+        # Normalize angle to range [-π, π]
+        heading_angle = velocity_angle
+        while heading_angle > math.pi:
+            heading_angle -= 2 * math.pi
+        while heading_angle < -math.pi:
+            heading_angle += 2 * math.pi
         
-        self.position['timestamp'] = current_time
-        
-        # Debug output every 2 seconds
-        if int(elapsed_time * 5) % 10 == 0:  # Every 2 seconds
-            progress = (elapsed_time % rotation_period) / rotation_period * 100
-            print(f"📍 Robot position: ({self.position['x']:.3f}, {self.position['y']:.3f}), "
-                  f"progress: {progress:.1f}% of rotation")
+        # Update position with thread safety
+        with self.position_lock:
+            self.position['x'] = new_x
+            self.position['y'] = new_y
+            self.position['angle'] = heading_angle  # Robot's heading in radians [-π, π]
+            self.position['timestamp'] = current_time
+    
+    def position_update_loop(self):
+        """Continuous position update loop running at 100Hz"""
+        print(f"🔄 Starting position update loop at 100Hz")
+        while self.running:
+            try:
+                self.update_position()
+                time.sleep(0.01)  # 100Hz = 10ms interval
+            except Exception as e:
+                print(f"❌ Position update error: {e}")
+                time.sleep(0.1)  # Back off on error
     
     def handle_client(self, client_socket, address):
         """Handle client connection"""
@@ -144,11 +163,10 @@ class MockRobotServer:
                     if header['msg_type'] == REQUEST_POSITION:
                         print(f"🔍 Position request received")
                         
-                        # Update mock position
-                        self.update_position()
+                        # Get current position with thread safety
+                        with self.position_lock:
+                            response_data = self.position.copy()
                         
-                        # Create response
-                        response_data = self.position.copy()
                         response_msg = self.pack_message(header['req_id'], RESPONSE_POSITION, response_data)
                         
                         print(f"📤 Sending position response: {response_data}")
@@ -176,6 +194,10 @@ class MockRobotServer:
             self.socket.bind((self.host, self.port))
             self.socket.listen(5)
             self.running = True
+            
+            # Start the continuous position update thread
+            self.position_thread = threading.Thread(target=self.position_update_loop, daemon=True)
+            self.position_thread.start()
             
             print(f"🤖 Mock Robot Server started on {self.host}:{self.port}")
             print(f"📍 Initial position: ({self.position['x']:.2f}, {self.position['y']:.2f})")

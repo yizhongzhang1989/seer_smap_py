@@ -121,6 +121,30 @@
             pointer-events: none;
             transform: translate(-50%, -50%);
         }
+
+        .robot-arrow {
+            position: absolute;
+            width: 2px;
+            height: 25px;
+            background-color: #ff0000;
+            top: 50%;  /* Start from center of robot marker */
+            left: 50%; /* Start from center of robot marker */
+            transform: translate(-1px, -25px);  /* Center horizontally, position so arrow starts at robot center */
+            transform-origin: 1px 25px;  /* Rotate around the bottom point of the arrow (robot center) */
+        }
+
+        .robot-arrow::after {
+            content: '';
+            position: absolute;
+            top: -4px;  /* Position arrowhead at the far end */
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-bottom: 8px solid #ff0000;
+            transform: translateX(-50%);
+        }
         
         @keyframes robot-pulse {
             0% { transform: translate(-50%, -50%) scale(1); }
@@ -380,10 +404,10 @@
             if (isPolling) return;
             
             isPolling = true;
-            console.log('Starting position polling...');
+            console.log('Starting position polling at 5Hz...');
             
-            // Poll every 1 second
-            positionPollingInterval = setInterval(pollRobotPosition, 1000);
+            // Poll every 200ms (5Hz)
+            positionPollingInterval = setInterval(pollRobotPosition, 200);
             
             // Also poll immediately
             pollRobotPosition();
@@ -554,21 +578,74 @@
                 robotMarker.remove();
             }
             
-            // Create robot marker - simple green circle
+            // Create robot marker - green circle with directional arrow
             const mapImageWrapper = document.getElementById('map-image-wrapper');
             if (!mapImageWrapper) {
                 console.error('Map image wrapper not found!');
                 return;
             }
-            
+
             robotMarker = document.createElement('div');
             robotMarker.className = 'robot-marker';
             robotMarker.style.left = imageX + 'px';
             robotMarker.style.top = imageY + 'px';
-            robotMarker.title = `Robot Position: (${x.toFixed(2)}, ${y.toFixed(2)})`;
             
+            // Create arrow to show robot's front direction using SVG
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.style.position = 'absolute';
+            svg.style.left = '50%';  // Center horizontally within the robot marker
+            svg.style.top = '50%';   // Center vertically within the robot marker
+            svg.style.width = '50px';
+            svg.style.height = '50px';
+            svg.style.pointerEvents = 'none';
+            svg.style.transform = 'translate(-50%, -50%)'; // Center the SVG itself
+            
+            // Calculate arrow end point based on robot's angle
+            const angleRad = robotPosition.angle || 0;
+            const angleDeg = angleRad * 180 / Math.PI;
+            const arrowLength = 20; // pixels
+            
+            // SVG center point (this will be at the robot's center)
+            const centerX = 25;
+            const centerY = 25;
+            
+            // Calculate end point (need to negate angle due to Y-axis flip in screen coordinates)
+            const endX = centerX + arrowLength * Math.cos(-angleRad);
+            const endY = centerY + arrowLength * Math.sin(-angleRad);
+            
+            // Create arrow line
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', centerX);
+            line.setAttribute('y1', centerY);
+            line.setAttribute('x2', endX);
+            line.setAttribute('y2', endY);
+            line.setAttribute('stroke', '#ff0000');
+            line.setAttribute('stroke-width', '2');
+            
+            // Create arrowhead
+            const arrowhead = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            const headSize = 4;
+            const headX = endX - headSize * Math.cos(-angleRad);
+            const headY = endY - headSize * Math.sin(-angleRad);
+            const perpX = headSize * Math.sin(-angleRad);
+            const perpY = -headSize * Math.cos(-angleRad);
+            
+            const points = [
+                `${endX},${endY}`,
+                `${headX + perpX},${headY + perpY}`,
+                `${headX - perpX},${headY - perpY}`
+            ].join(' ');
+            
+            arrowhead.setAttribute('points', points);
+            arrowhead.setAttribute('fill', '#ff0000');
+            
+            svg.appendChild(line);
+            svg.appendChild(arrowhead);
+            robotMarker.appendChild(svg);
+            robotMarker.title = `Robot Position: (${x.toFixed(2)}, ${y.toFixed(2)}), Angle: ${angleDeg.toFixed(1)}°`;
+
             mapImageWrapper.appendChild(robotMarker);
-            console.log('Robot marker added to map');
+            console.log(`Robot marker added at (${x.toFixed(2)}, ${y.toFixed(2)}) with angle ${angleDeg.toFixed(1)}°`);
         }
 
         function updatePositionDisplay() {

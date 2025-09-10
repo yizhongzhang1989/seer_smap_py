@@ -552,8 +552,8 @@ def handle_get_robot_status():
         })
 
 if __name__ == '__main__':
-    # Start the robot controller automatically on startup (connect to real robot)
-    start_robot_controller('192.168.192.5')
+    # Start the robot controller automatically on startup (connect to mock robot server)
+    start_robot_controller('127.0.0.1')
     
     # Run the Flask-SocketIO application
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
