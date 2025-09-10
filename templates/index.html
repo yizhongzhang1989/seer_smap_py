@@ -75,10 +75,37 @@
             overflow: hidden;
         }
         
+        .map-image-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        
         .map-image {
             max-width: 100%;
             max-height: 100%;
             border-radius: 10px;
+            cursor: crosshair;
+            display: block;
+        }
+        
+        .map-point {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background-color: #0066ff;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+            animation: pulse 2s infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(0, 102, 255, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 102, 255, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 102, 255, 0); }
         }
         
         .upload-area {
@@ -149,22 +176,6 @@
                     Robot Control Center
                 </h2>
                 
-                <!-- Connection Status -->
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-wifi me-2"></i>
-                            Connection Status
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="connection-status">
-                            <span class="status-indicator status-disconnected"></span>
-                            Robot Disconnected
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Map Upload -->
                 <div class="card">
                     <div class="card-header">
@@ -199,6 +210,22 @@
                                 <div><strong>Points:</strong> <span id="map-points">-</span></div>
                                 <div><strong>Size:</strong> <span id="map-size">-</span></div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connection Status -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-wifi me-2"></i>
+                            Connection Status
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="connection-status">
+                            <span class="status-indicator status-disconnected"></span>
+                            Robot Disconnected
                         </div>
                     </div>
                 </div>
@@ -243,6 +270,14 @@
                                     <i class="fas fa-home"></i> Home
                                 </button>
                             </div>
+                            <div class="col-12 mt-3">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <button class="btn btn-warning btn-robot" id="go-to-position" disabled>
+                                        <i class="fas fa-crosshairs"></i> Go to Selected Position
+                                    </button>
+                                    <span class="text-white ms-2" id="position-info">Click on the map to select a position</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -284,6 +319,9 @@
     <script>
         // Global variables
         let currentMapLoaded = false;
+        let selectedPosition = null;
+        let mapBounds = null;
+        let plotArea = null;
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
@@ -310,6 +348,7 @@
             document.getElementById('turn-right').addEventListener('click', () => sendRobotCommand('turn_right'));
             document.getElementById('stop').addEventListener('click', () => sendRobotCommand('stop'));
             document.getElementById('go-home').addEventListener('click', () => sendRobotCommand('go_home'));
+            document.getElementById('go-to-position').addEventListener('click', () => goToSelectedPosition());
         }
 
         // Drag and drop handlers
@@ -421,6 +460,9 @@
             const height = (mapInfo.bounds.y_max - mapInfo.bounds.y_min).toFixed(1);
             document.getElementById('map-size').textContent = `${width}m × ${height}m`;
             
+            // Store map bounds for coordinate calculation
+            mapBounds = mapInfo.bounds;
+            
             document.getElementById('current-map-info').style.display = 'block';
             currentMapLoaded = true;
         }
@@ -432,17 +474,126 @@
             const mapContainer = document.getElementById('map-container');
             mapContainer.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin fa-2x"></i><p>Generating map visualization...</p></div>';
 
+            // Clear any selected position when loading new map
+            selectedPosition = null;
+            plotArea = null;
+            document.getElementById('go-to-position').disabled = true;
+            document.getElementById('position-info').textContent = 'Click on the map to select a position';
+
             fetch('/get_map_image')
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    mapContainer.innerHTML = `<img src="${data.image}" class="map-image" alt="Map Visualization">`;
+                    mapContainer.innerHTML = `
+                        <div class="map-image-wrapper" id="map-image-wrapper">
+                            <img src="${data.image}" class="map-image" alt="Map Visualization" id="map-image">
+                        </div>
+                    `;
+                    
+                    // Store plot area and map bounds information
+                    plotArea = data.plot_area;
+                    if (data.map_bounds) {
+                        mapBounds = data.map_bounds;
+                    }
+                    
+                    // Add click listener to the map image
+                    const mapImage = document.getElementById('map-image');
+                    mapImage.addEventListener('click', handleMapClick);
+                    
+                    // Log plot area info for debugging
+                    console.log('Plot area:', plotArea);
+                    console.log('Map bounds:', mapBounds);
                 } else {
                     mapContainer.innerHTML = `<div class="no-map-message text-danger">Error: ${data.error}</div>`;
                 }
             })
             .catch(error => {
                 mapContainer.innerHTML = `<div class="no-map-message text-danger">Error loading map: ${error.message}</div>`;
+            });
+        }
+
+        // Map click handling
+        function handleMapClick(event) {
+            if (!mapBounds || !plotArea) return;
+            
+            const mapImage = event.target;
+            const mapImageWrapper = document.getElementById('map-image-wrapper');
+            const rect = mapImage.getBoundingClientRect();
+            
+            // Get click coordinates relative to the image
+            const imageX = event.clientX - rect.left;
+            const imageY = event.clientY - rect.top;
+            
+            // Ensure click is within image bounds
+            if (imageX < 0 || imageX > mapImage.clientWidth || imageY < 0 || imageY > mapImage.clientHeight) {
+                return;
+            }
+            
+            // Since the entire image is now the plot area, we can directly convert
+            // Convert to coordinates within the image (0 to 1)
+            const plotX = imageX / mapImage.clientWidth;
+            const plotY = imageY / mapImage.clientHeight;
+            
+            // Convert to map coordinates
+            // plotX: 0 = x_min, 1 = x_max
+            // plotY: 0 = y_max, 1 = y_min (Y is flipped in image coordinates)
+            const mapX = mapBounds.x_min + plotX * (mapBounds.x_max - mapBounds.x_min);
+            const mapY = mapBounds.y_max - plotY * (mapBounds.y_max - mapBounds.y_min);
+            
+            // Store selected position
+            selectedPosition = { x: mapX, y: mapY };
+            
+            // Remove existing point
+            const existingPoint = document.querySelector('.map-point');
+            if (existingPoint) {
+                existingPoint.remove();
+            }
+            
+            // Add visual point at click location (relative to image wrapper)
+            const point = document.createElement('div');
+            point.className = 'map-point';
+            point.style.left = imageX + 'px';
+            point.style.top = imageY + 'px';
+            mapImageWrapper.appendChild(point);
+            
+            // Update UI
+            document.getElementById('go-to-position').disabled = false;
+            document.getElementById('position-info').textContent = 
+                `Selected: (${mapX.toFixed(2)}, ${mapY.toFixed(2)})`;
+            
+            logCommand(`Position selected: (${mapX.toFixed(2)}, ${mapY.toFixed(2)}) | Plot: (${plotX.toFixed(3)}, ${plotY.toFixed(3)}) | Image: (${imageX.toFixed(0)}, ${imageY.toFixed(0)})`, 'info');
+        }
+
+        // Go to selected position
+        function goToSelectedPosition() {
+            if (!selectedPosition) {
+                logCommand('No position selected', 'error');
+                return;
+            }
+            
+            logCommand(`Moving to position (${selectedPosition.x.toFixed(2)}, ${selectedPosition.y.toFixed(2)})`, 'info');
+            
+            fetch('/robot_command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    command: 'move_to_position',
+                    x: selectedPosition.x,
+                    y: selectedPosition.y 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    logCommand(data.message, 'success');
+                } else {
+                    logCommand(`Command failed: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                logCommand(`Command error: ${error.message}`, 'error');
             });
         }
 

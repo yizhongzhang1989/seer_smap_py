@@ -130,10 +130,14 @@ def get_map_image():
         # Create a figure and get the image data
         fig, ax = plt.subplots(figsize=(12, 8))
         
-        # Use the internal plotting logic without showing/saving
+        # Remove all padding and margins to make plot area fill the entire image
+        fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+        ax.set_position([0, 0, 1, 1])  # Make axes fill entire figure
+        
+        # Set the exact bounds from the map data
+        ax.set_xlim(current_map_data.header.minPos.x, current_map_data.header.maxPos.x)
+        ax.set_ylim(current_map_data.header.minPos.y, current_map_data.header.maxPos.y)
         ax.set_aspect('equal')
-        ax.grid(True, alpha=0.3)
-        ax.set_title('SMAP Visualization', fontsize=16, fontweight='bold')
         
         # Plot normal points (obstacles/walls)
         if current_map_data.normalPosList:
@@ -161,18 +165,25 @@ def get_map_image():
                        [line.startPos.y, line.endPos.y], 
                        'g-', linewidth=2, alpha=0.8)
         
-        # Set axis labels
-        ax.set_xlabel('X (m)', fontsize=12)
-        ax.set_ylabel('Y (m)', fontsize=12)
+        # Remove axes labels and ticks to maximize plot area
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlabel('')
+        ax.set_ylabel('')
         
-        # Set title with map info
-        title = f"{current_map_data.header.mapName} ({current_map_data.header.mapType})"
-        ax.set_title(title, fontsize=16, fontweight='bold')
+        # Add a very subtle grid for coordinate reference (optional)
+        ax.grid(True, alpha=0.1, linestyle='-', linewidth=0.5)
+        ax.set_axisbelow(True)
         
-        # Save to BytesIO
+        # Save to BytesIO without any padding
         img_buffer = BytesIO()
-        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight', pad_inches=0)
         img_buffer.seek(0)
+        
+        # Since we removed all padding, the entire image is the plot area
+        fig_width, fig_height = fig.get_size_inches()
+        fig_width_px = int(fig_width * 150)  # dpi=150
+        fig_height_px = int(fig_height * 150)
         
         # Convert to base64
         img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
@@ -183,7 +194,21 @@ def get_map_image():
         
         return jsonify({
             'success': True,
-            'image': f'data:image/png;base64,{img_base64}'
+            'image': f'data:image/png;base64,{img_base64}',
+            'plot_area': {
+                'left': 0,
+                'top': 0,
+                'width': fig_width_px,
+                'height': fig_height_px,
+                'image_width': fig_width_px,
+                'image_height': fig_height_px
+            },
+            'map_bounds': {
+                'x_min': current_map_data.header.minPos.x,
+                'x_max': current_map_data.header.maxPos.x,
+                'y_min': current_map_data.header.minPos.y,
+                'y_max': current_map_data.header.maxPos.y
+            }
         })
         
     except Exception as e:
@@ -196,6 +221,8 @@ def get_map_image():
 def robot_command():
     """Handle robot control commands (placeholder for future implementation)"""
     command = request.json.get('command')
+    x = request.json.get('x')
+    y = request.json.get('y')
     
     # Placeholder for robot control logic
     commands = {
@@ -207,7 +234,20 @@ def robot_command():
         'go_home': 'Sending robot to home position'
     }
     
-    if command in commands:
+    if command == 'move_to_position':
+        if x is not None and y is not None:
+            # Placeholder for actual robot movement implementation
+            message = f'Moving robot to position ({x:.2f}, {y:.2f})'
+            app.logger.info(f"Robot command: {message}")
+            return jsonify({
+                'success': True,
+                'message': message,
+                'command': command,
+                'position': {'x': x, 'y': y}
+            })
+        else:
+            return jsonify({'error': 'Position coordinates (x, y) required for move_to_position command'}), 400
+    elif command in commands:
         return jsonify({
             'success': True,
             'message': commands[command],
