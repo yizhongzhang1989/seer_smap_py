@@ -1,23 +1,33 @@
 from flask import Flask, render_template, request, jsonify, send_file
+from flask_socketio import SocketIO, emit
 import os
 import json
 import base64
 from io import BytesIO
+import threading
+import time
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 from seer_smap import SmapReader, SmapVisualizer
+from seer_controller import SeerController
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'seer_robot_secret_key_2025'
 app.config['UPLOAD_FOLDER'] = 'temp'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# Initialize SocketIO for real-time updates
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Create temp directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Global variables to store current map
+# Global variables to store current map and robot controller
 current_map_data = None
 current_map_name = None
+robot_controller = None
+robot_position_thread = None
 
 def cleanup_temp_files():
     """Clean up old temporary files (older than 1 hour)"""
@@ -36,6 +46,56 @@ def cleanup_temp_files():
                     app.logger.info(f"Cleaned up old temp file: {filename}")
     except Exception as e:
         app.logger.error(f"Error cleaning temp files: {e}")
+
+def robot_position_callback(position_data):
+    """Callback function to handle robot position updates"""
+    try:
+        # Emit position update to all connected clients
+        socketio.emit('robot_position_update', {
+            'position': position_data,
+            'timestamp': time.time()
+        })
+        app.logger.info(f"Robot position update: {position_data}")
+    except Exception as e:
+        app.logger.error(f"Error in position callback: {e}")
+
+def start_robot_controller(robot_ip='192.168.192.5'):
+    """Initialize and start the robot controller"""
+    global robot_controller
+    
+    try:
+        # Create SeerController instance
+        robot_controller = SeerController(robot_ip=robot_ip)
+        
+        # Add position callback for real-time updates
+        robot_controller.add_position_callback(robot_position_callback)
+        
+        # Connect to robot
+        if robot_controller.connect():
+            # Start position monitoring
+            robot_controller.start_position_monitoring()
+            app.logger.info(f"Robot controller started successfully for {robot_ip}")
+            return True
+        else:
+            app.logger.error(f"Failed to connect to robot at {robot_ip}")
+            return False
+            
+    except Exception as e:
+        app.logger.error(f"Error starting robot controller: {e}")
+        return False
+
+def stop_robot_controller():
+    """Stop the robot controller"""
+    global robot_controller
+    
+    try:
+        if robot_controller:
+            robot_controller.stop_position_monitoring()
+            robot_controller.disconnect()
+            robot_controller = None
+            app.logger.info("Robot controller stopped")
+    except Exception as e:
+        app.logger.error(f"Error stopping robot controller: {e}")
 
 @app.route('/')
 def index():
@@ -219,42 +279,88 @@ def get_map_image():
 
 @app.route('/robot_command', methods=['POST'])
 def robot_command():
-    """Handle robot control commands (placeholder for future implementation)"""
+    """Handle robot control commands"""
+    global robot_controller
+    
     command = request.json.get('command')
     x = request.json.get('x')
     y = request.json.get('y')
     
-    # Placeholder for robot control logic
-    commands = {
-        'move_forward': 'Moving robot forward',
-        'move_backward': 'Moving robot backward', 
-        'turn_left': 'Turning robot left',
-        'turn_right': 'Turning robot right',
-        'stop': 'Stopping robot',
-        'go_home': 'Sending robot to home position'
-    }
-    
-    if command == 'move_to_position':
-        if x is not None and y is not None:
-            # Placeholder for actual robot movement implementation
-            message = f'Moving robot to position ({x:.2f}, {y:.2f})'
+    try:
+        if not robot_controller:
+            return jsonify({
+                'success': False,
+                'message': 'Robot controller not initialized'
+            }), 400
+        
+        if not robot_controller.connected:
+            return jsonify({
+                'success': False,
+                'message': 'Robot not connected'
+            }), 400
+        
+        if command == 'move_to_position':
+            if x is not None and y is not None:
+                # For now, just return success - actual movement commands would go here
+                message = f'Moving robot to position ({x:.2f}, {y:.2f})'
+                app.logger.info(f"Robot command: {message}")
+                
+                # Emit command to all clients
+                socketio.emit('robot_command_sent', {
+                    'command': command,
+                    'x': x,
+                    'y': y,
+                    'message': message,
+                    'timestamp': time.time()
+                })
+                
+                return jsonify({
+                    'success': True,
+                    'message': message
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Position coordinates required'
+                }), 400
+        
+        # Handle other commands
+        commands = {
+            'move_forward': 'Moving robot forward',
+            'move_backward': 'Moving robot backward', 
+            'turn_left': 'Turning robot left',
+            'turn_right': 'Turning robot right',
+            'stop': 'Stopping robot',
+            'go_home': 'Sending robot to home position'
+        }
+        
+        if command in commands:
+            message = commands[command]
             app.logger.info(f"Robot command: {message}")
+            
+            # Emit command to all clients
+            socketio.emit('robot_command_sent', {
+                'command': command,
+                'message': message,
+                'timestamp': time.time()
+            })
+            
             return jsonify({
                 'success': True,
-                'message': message,
-                'command': command,
-                'position': {'x': x, 'y': y}
+                'message': message
             })
         else:
-            return jsonify({'error': 'Position coordinates (x, y) required for move_to_position command'}), 400
-    elif command in commands:
+            return jsonify({
+                'success': False,
+                'message': f'Unknown command: {command}'
+            }), 400
+            
+    except Exception as e:
+        app.logger.error(f"Error executing robot command: {e}")
         return jsonify({
-            'success': True,
-            'message': commands[command],
-            'command': command
-        })
-    else:
-        return jsonify({'error': 'Unknown command'}), 400
+            'success': False,
+            'message': f'Error executing command: {str(e)}'
+        }), 500
 
 @app.route('/get_available_maps')
 def get_available_maps():
@@ -326,5 +432,74 @@ def load_map(map_name):
         app.logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': f'Error loading map: {str(e)}'}), 500
 
+# SocketIO Events
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    app.logger.info('Client connected')
+    
+    # Send current robot status if available
+    if robot_controller:
+        current_position = robot_controller.get_current_position()
+        if current_position:
+            emit('robot_position_update', {
+                'position': current_position,
+                'timestamp': time.time()
+            })
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    app.logger.info('Client disconnected')
+
+@socketio.on('start_robot_controller')
+def handle_start_robot_controller(data):
+    """Handle request to start robot controller"""
+    robot_ip = data.get('robot_ip', '192.168.192.5')
+    
+    if start_robot_controller(robot_ip):
+        emit('robot_controller_status', {
+            'status': 'connected',
+            'message': f'Connected to robot at {robot_ip}',
+            'timestamp': time.time()
+        })
+    else:
+        emit('robot_controller_status', {
+            'status': 'error',
+            'message': f'Failed to connect to robot at {robot_ip}',
+            'timestamp': time.time()
+        })
+
+@socketio.on('stop_robot_controller')
+def handle_stop_robot_controller():
+    """Handle request to stop robot controller"""
+    stop_robot_controller()
+    emit('robot_controller_status', {
+        'status': 'disconnected',
+        'message': 'Robot controller stopped',
+        'timestamp': time.time()
+    })
+
+@socketio.on('get_robot_status')
+def handle_get_robot_status():
+    """Handle request for current robot status"""
+    if robot_controller and robot_controller.connected:
+        current_position = robot_controller.get_current_position()
+        emit('robot_status_response', {
+            'connected': True,
+            'position': current_position,
+            'timestamp': time.time()
+        })
+    else:
+        emit('robot_status_response', {
+            'connected': False,
+            'position': None,
+            'timestamp': time.time()
+        })
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Start the robot controller automatically on startup
+    start_robot_controller()
+    
+    # Run the Flask-SocketIO application
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
