@@ -1,142 +1,189 @@
 #!/usr/bin/env python3
 """
-TCP Listener Script for Port 19301
-Listens for incoming TCP connections and prints received data.
-Commonly used for robot communication protocols.
+TCP Client Script for Robot Communication
+Connects to robot at 192.168.192.5:19301 and listens for incoming data.
 """
 
 import socket
-import threading
 import time
 import sys
+import threading
 
-class TCPListener:
-    def __init__(self, host='0.0.0.0', port=19301):
-        self.host = host
-        self.port = port
-        self.server_socket = None
+class RobotTCPClient:
+    def __init__(self, robot_ip='192.168.192.5', robot_port=19301):
+        self.robot_ip = robot_ip
+        self.robot_port = robot_port
+        self.client_socket = None
         self.running = False
-        self.client_threads = []
+        self.connected = False
     
-    def handle_client(self, client_socket, client_address):
-        """Handle incoming client connection"""
-        print(f"[{time.strftime('%H:%M:%S')}] New connection from {client_address}")
-        
+    def connect(self):
+        """Connect to the robot"""
         try:
-            while self.running:
-                # Receive data from client
-                data = client_socket.recv(1024)
-                
-                if not data:
-                    print(f"[{time.strftime('%H:%M:%S')}] Client {client_address} disconnected")
-                    break
-                
-                # Print received data in multiple formats
-                timestamp = time.strftime('%H:%M:%S')
-                print(f"\n[{timestamp}] Received from {client_address}:")
-                print(f"  Raw bytes: {data}")
-                print(f"  Length: {len(data)} bytes")
-                print(f"  Hex: {data.hex()}")
-                
-                # Try to decode as UTF-8 text
-                try:
-                    text = data.decode('utf-8')
-                    print(f"  Text: '{text}'")
-                except UnicodeDecodeError:
-                    print(f"  Text: <not valid UTF-8>")
-                
-                # Try to decode as ASCII (common for robot protocols)
-                try:
-                    ascii_text = data.decode('ascii')
-                    print(f"  ASCII: '{ascii_text}'")
-                except UnicodeDecodeError:
-                    print(f"  ASCII: <not valid ASCII>")
-                
-                print("-" * 60)
-                
-        except ConnectionResetError:
-            print(f"[{time.strftime('%H:%M:%S')}] Connection reset by {client_address}")
-        except Exception as e:
-            print(f"[{time.strftime('%H:%M:%S')}] Error handling client {client_address}: {e}")
-        finally:
-            client_socket.close()
-            print(f"[{time.strftime('%H:%M:%S')}] Connection to {client_address} closed")
-    
-    def start(self):
-        """Start the TCP listener"""
-        try:
-            # Create socket
-            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.client_socket.settimeout(10)  # 10 second timeout for connection
             
-            # Bind to address and port
-            self.server_socket.bind((self.host, self.port))
-            self.server_socket.listen(5)
+            print(f"Connecting to robot at {self.robot_ip}:{self.robot_port}...")
+            self.client_socket.connect((self.robot_ip, self.robot_port))
             
-            self.running = True
-            
-            print(f"TCP Listener started on {self.host}:{self.port}")
-            print(f"Waiting for connections... (Press Ctrl+C to stop)")
+            self.connected = True
+            print(f"✅ Successfully connected to robot at {self.robot_ip}:{self.robot_port}")
             print("=" * 60)
             
-            while self.running:
+            return True
+            
+        except socket.timeout:
+            print(f"❌ Connection timeout - Robot at {self.robot_ip}:{self.robot_port} not responding")
+            return False
+        except ConnectionRefusedError:
+            print(f"❌ Connection refused - Robot at {self.robot_ip}:{self.robot_port} not accepting connections")
+            return False
+        except socket.gaierror:
+            print(f"❌ Invalid IP address: {self.robot_ip}")
+            return False
+        except Exception as e:
+            print(f"❌ Connection error: {e}")
+            return False
+    
+    def listen_for_data(self):
+        """Listen for incoming data from the robot"""
+        print(f"🎧 Listening for data from robot... (Press Ctrl+C to stop)")
+        
+        try:
+            # Remove timeout for data reception
+            self.client_socket.settimeout(None)
+            
+            while self.running and self.connected:
                 try:
-                    # Accept incoming connection
-                    client_socket, client_address = self.server_socket.accept()
+                    # Receive data from robot
+                    data = self.client_socket.recv(4096)  # Increased buffer size
                     
-                    # Create thread to handle client
-                    client_thread = threading.Thread(
-                        target=self.handle_client,
-                        args=(client_socket, client_address),
-                        daemon=True
-                    )
-                    client_thread.start()
-                    self.client_threads.append(client_thread)
+                    if not data:
+                        print(f"\n[{time.strftime('%H:%M:%S')}] Robot disconnected")
+                        self.connected = False
+                        break
                     
-                except OSError:
-                    if self.running:
-                        print("Socket error occurred")
+                    # Print received data in multiple formats
+                    timestamp = time.strftime('%H:%M:%S')
+                    print(f"\n[{timestamp}] Received from robot:")
+                    print(f"  Raw bytes: {data}")
+                    print(f"  Length: {len(data)} bytes")
+                    print(f"  Hex: {' '.join(f'{b:02x}' for b in data)}")
+                    
+                    # Try to decode as UTF-8 text
+                    try:
+                        text = data.decode('utf-8').strip()
+                        print(f"  Text: '{text}'")
+                    except UnicodeDecodeError:
+                        print(f"  Text: <not valid UTF-8>")
+                    
+                    # Try to decode as ASCII (common for robot protocols)
+                    try:
+                        ascii_text = data.decode('ascii').strip()
+                        print(f"  ASCII: '{ascii_text}'")
+                    except UnicodeDecodeError:
+                        print(f"  ASCII: <not valid ASCII>")
+                    
+                    # Show printable characters only
+                    printable_chars = ''.join(chr(b) if 32 <= b <= 126 else f'\\x{b:02x}' for b in data)
+                    print(f"  Printable: '{printable_chars}'")
+                    
+                    print("-" * 60)
+                    
+                except socket.timeout:
+                    continue  # Continue listening
+                except ConnectionResetError:
+                    print(f"\n[{time.strftime('%H:%M:%S')}] Connection reset by robot")
+                    self.connected = False
+                    break
+                except Exception as e:
+                    print(f"\n[{time.strftime('%H:%M:%S')}] Error receiving data: {e}")
                     break
                     
         except Exception as e:
-            print(f"Error starting server: {e}")
+            print(f"Error in listen_for_data: {e}")
+        finally:
+            self.disconnect()
+    
+    def send_data(self, data):
+        """Send data to the robot"""
+        if not self.connected:
+            print("❌ Not connected to robot")
+            return False
+        
+        try:
+            if isinstance(data, str):
+                data = data.encode('utf-8')
+            
+            self.client_socket.send(data)
+            print(f"📤 Sent to robot: {data}")
+            return True
+        except Exception as e:
+            print(f"❌ Error sending data: {e}")
+            return False
+    
+    def start(self):
+        """Start the robot client"""
+        self.running = True
+        
+        if not self.connect():
+            return
+        
+        try:
+            self.listen_for_data()
+        except KeyboardInterrupt:
+            print(f"\n[{time.strftime('%H:%M:%S')}] Received interrupt signal")
         finally:
             self.stop()
     
     def stop(self):
-        """Stop the TCP listener"""
+        """Stop the robot client"""
         self.running = False
-        if self.server_socket:
-            self.server_socket.close()
-        print(f"\n[{time.strftime('%H:%M:%S')}] TCP Listener stopped")
+        self.disconnect()
+    
+    def disconnect(self):
+        """Disconnect from the robot"""
+        if self.client_socket:
+            try:
+                self.client_socket.close()
+            except:
+                pass
+            self.client_socket = None
+        
+        self.connected = False
+        print(f"\n[{time.strftime('%H:%M:%S')}] Disconnected from robot")
 
 def main():
     """Main function"""
-    # Default settings
-    host = '0.0.0.0'  # Listen on all interfaces
-    port = 19301
+    # Default robot settings
+    robot_ip = '192.168.192.5'
+    robot_port = 19301
     
     # Parse command line arguments
     if len(sys.argv) > 1:
+        robot_ip = sys.argv[1]
+    
+    if len(sys.argv) > 2:
         try:
-            port = int(sys.argv[1])
+            robot_port = int(sys.argv[2])
         except ValueError:
             print("Invalid port number. Using default port 19301.")
     
-    if len(sys.argv) > 2:
-        host = sys.argv[2]
+    print(f"🤖 Robot TCP Client")
+    print(f"Target: {robot_ip}:{robot_port}")
+    print("=" * 40)
     
-    # Create and start listener
-    listener = TCPListener(host, port)
+    # Create and start client
+    client = RobotTCPClient(robot_ip, robot_port)
     
     try:
-        listener.start()
+        client.start()
     except KeyboardInterrupt:
         print(f"\n[{time.strftime('%H:%M:%S')}] Received interrupt signal")
-        listener.stop()
+        client.stop()
     except Exception as e:
         print(f"Unexpected error: {e}")
-        listener.stop()
+        client.stop()
 
 if __name__ == "__main__":
     main()
