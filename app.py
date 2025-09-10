@@ -155,7 +155,8 @@ def get_map_image():
         
         # Plot advanced lines
         if current_map_data.advancedLineList:
-            for line in current_map_data.advancedLineList:
+            for advanced_line in current_map_data.advancedLineList:
+                line = advanced_line.line  # AdvancedLine has a 'line' attribute of type MapLine
                 ax.plot([line.startPos.x, line.endPos.x], 
                        [line.startPos.y, line.endPos.y], 
                        'g-', linewidth=2, alpha=0.8)
