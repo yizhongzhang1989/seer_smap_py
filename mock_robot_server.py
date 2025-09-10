@@ -9,6 +9,7 @@ import json
 import time
 import struct
 import threading
+import math
 from typing import Dict, Any
 
 # Protocol constants (same as SeerController)
@@ -26,9 +27,11 @@ class MockRobotServer:
         self.running = False
         
         # Mock robot position that changes over time
+        # Start at (0,0), will rotate around (1,0) 
+        self.start_time = time.time()
         self.position = {
-            'x': 10.0,
-            'y': 5.0,
+            'x': 0.0,  # Start at (0,0)
+            'y': 0.0,
             'angle': 0.0,
             'confidence': 0.95,
             'current_station': None,
@@ -72,23 +75,44 @@ class MockRobotServer:
         }
     
     def update_position(self):
-        """Update mock robot position (simulate movement)"""
+        """Update mock robot position (simulate circular movement around (1,0))"""
         current_time = time.time()
         
-        # Simulate slow circular movement
-        elapsed = current_time - self.position['timestamp']
-        self.position['angle'] = (self.position['angle'] + elapsed * 0.1) % (2 * 3.14159)
+        # Calculate time since start
+        elapsed_time = current_time - self.start_time
         
-        # Update position based on angle (circular path)
-        radius = 2.0
-        center_x, center_y = 10.0, 5.0
-        self.position['x'] = center_x + radius * 0.5 * (time.time() % 10 - 5)  # Slow x movement
-        self.position['y'] = center_y + radius * 0.3 * (time.time() % 8 - 4)   # Slow y movement
+        # 10 seconds per full rotation (2π radians)
+        # Clockwise rotation means negative angular velocity
+        rotation_period = 10.0  # seconds
+        angular_velocity = -2 * math.pi / rotation_period  # negative for clockwise
         
-        # Vary confidence slightly
-        self.position['confidence'] = 0.9 + 0.1 * (0.5 + 0.5 * time.time() % 1)
+        # Current angle in the rotation
+        # Start at angle π (180°) to begin at (0,0) when center is (1,0)
+        angle = math.pi + angular_velocity * elapsed_time
+        
+        # Robot rotates around center point (1, 0) with radius 1
+        center_x = 1.0
+        center_y = 0.0
+        radius = 1.0
+        
+        # Calculate position on circle
+        self.position['x'] = center_x + radius * math.cos(angle)
+        self.position['y'] = center_y + radius * math.sin(angle)
+        
+        # Robot's orientation angle (facing direction of movement)
+        # For clockwise motion, tangent direction is angle - π/2
+        self.position['angle'] = angle - math.pi/2
+        
+        # Keep confidence stable
+        self.position['confidence'] = 0.95
         
         self.position['timestamp'] = current_time
+        
+        # Debug output every 2 seconds
+        if int(elapsed_time * 5) % 10 == 0:  # Every 2 seconds
+            progress = (elapsed_time % rotation_period) / rotation_period * 100
+            print(f"📍 Robot position: ({self.position['x']:.3f}, {self.position['y']:.3f}), "
+                  f"progress: {progress:.1f}% of rotation")
     
     def handle_client(self, client_socket, address):
         """Handle client connection"""

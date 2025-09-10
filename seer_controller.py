@@ -232,13 +232,10 @@ class SeerController:
             self.stats['successful_queries'] += 1
             self.stats['last_update'] = time.time()
             
-            print(f"✅ Position query successful!")
-            print(f"📍 Position data received:")
-            for key, value in result.items():
-                if isinstance(value, float):
-                    print(f"   {key}: {value:.6f}")
-                else:
-                    print(f"   {key}: {value}")
+            # Just print (x, y) for position packets
+            x = result.get('x', 0)
+            y = result.get('y', 0)
+            print(f"({x}, {y})")
             
             # Update position data
             with self.position_lock:
@@ -296,11 +293,8 @@ class SeerController:
                     print(f"🔄 Position query failed, reconnecting...")
                     self.disconnect()
                 elif position is not None:
-                    # Extract key position info for summary
-                    x = position.get('x', 'N/A')
-                    y = position.get('y', 'N/A')
-                    confidence = position.get('confidence', 'N/A')
-                    print(f"📊 Summary: Position=({x}, {y}), Confidence={confidence}")
+                    # Position received - (x, y) already printed in query_position
+                    pass
                     
             except Exception as e:
                 print(f"❌ Position monitoring error: {e}")

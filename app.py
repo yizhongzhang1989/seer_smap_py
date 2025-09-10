@@ -47,18 +47,6 @@ def cleanup_temp_files():
     except Exception as e:
         app.logger.error(f"Error cleaning temp files: {e}")
 
-def robot_position_callback(position_data):
-    """Callback function to handle robot position updates"""
-    try:
-        # Emit position update to all connected clients
-        socketio.emit('robot_position_update', {
-            'position': position_data,
-            'timestamp': time.time()
-        })
-        app.logger.info(f"Robot position update: {position_data}")
-    except Exception as e:
-        app.logger.error(f"Error in position callback: {e}")
-
 def start_robot_controller(robot_ip='192.168.192.5'):
     """Initialize and start the robot controller"""
     global robot_controller
@@ -67,12 +55,8 @@ def start_robot_controller(robot_ip='192.168.192.5'):
         # Create SeerController instance
         robot_controller = SeerController(robot_ip=robot_ip)
         
-        # Add position callback for real-time updates
-        robot_controller.add_position_callback(robot_position_callback)
-        
-        # Connect to robot
+        # Connect to robot and start monitoring
         if robot_controller.connect():
-            # Start position monitoring
             robot_controller.start_position_monitoring()
             app.logger.info(f"Robot controller started successfully for {robot_ip}")
             return True
@@ -433,6 +417,76 @@ def load_map(map_name):
         return jsonify({'error': f'Error loading map: {str(e)}'}), 500
 
 # SocketIO Events
+@app.route('/api/robot/position')
+def get_robot_position():
+    """Get current robot position"""
+    global robot_controller
+    
+    try:
+        if robot_controller and robot_controller.connected:
+            position = robot_controller.get_current_position()
+            if position:
+                return jsonify({
+                    'status': 'success',
+                    'connected': True,
+                    'position': position,
+                    'timestamp': time.time()
+                })
+            else:
+                return jsonify({
+                    'status': 'no_data',
+                    'connected': True,
+                    'position': None,
+                    'timestamp': time.time()
+                })
+        else:
+            return jsonify({
+                'status': 'disconnected',
+                'connected': False,
+                'position': None,
+                'timestamp': time.time()
+            })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'connected': False,
+            'position': None,
+            'error': str(e),
+            'timestamp': time.time()
+        }), 500
+
+@app.route('/api/robot/connect')
+def connect_robot():
+    """Connect to robot"""
+    global robot_controller
+    
+    try:
+        robot_ip = request.args.get('ip', '127.0.0.1')
+        
+        if robot_controller:
+            robot_controller.stop_position_monitoring()
+            robot_controller.disconnect()
+        
+        if start_robot_controller(robot_ip):
+            return jsonify({
+                'status': 'success',
+                'message': f'Connected to robot at {robot_ip}',
+                'connected': True
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to connect to robot at {robot_ip}',
+                'connected': False
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Connection error: {str(e)}',
+            'connected': False
+        }), 500
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
@@ -498,8 +552,8 @@ def handle_get_robot_status():
         })
 
 if __name__ == '__main__':
-    # Start the robot controller automatically on startup
-    start_robot_controller()
+    # Start the robot controller automatically on startup (connect to real robot)
+    start_robot_controller('192.168.192.5')
     
     # Run the Flask-SocketIO application
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
