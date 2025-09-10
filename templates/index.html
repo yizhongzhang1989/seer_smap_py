@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMAP Robot Control Interface</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+        
+        .container-fluid {
+            height: 100vh;
+            padding: 0;
+        }
+        
+        .control-panel {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        
+        .map-display {
+            background-color: white;
+            padding: 20px;
+            height: 100vh;
+            overflow: auto;
+        }
+        
+        .card {
+            margin-bottom: 20px;
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        
+        .card-header {
+            background: rgba(255, 255, 255, 0.15);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px 15px 0 0 !important;
+            color: white;
+        }
+        
+        .card-body {
+            color: white;
+        }
+        
+        .btn-robot {
+            margin: 5px;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-robot:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .map-container {
+            border: 2px solid #dee2e6;
+            border-radius: 15px;
+            background-color: #f8f9fa;
+            min-height: 500px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .map-image-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .map-image {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 10px;
+            cursor: crosshair;
+            display: block;
+        }
+        
+        .map-point {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background-color: #0066ff;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+            animation: pulse 2s infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(0, 102, 255, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 102, 255, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 102, 255, 0); }
+        }
+        
+        .upload-area {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            border-color: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .upload-area.dragover {
+            border-color: #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-connected {
+            background-color: #28a745;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-disconnected {
+            background-color: #dc3545;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .map-info {
+            font-size: 0.9em;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 10px;
+            border-radius: 10px;
+            margin-top: 10px;
+            color: white;
+        }
+        
+        .no-map-message {
+            color: #6c757d;
+            font-size: 1.2em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row h-100">
+            <!-- Control Panel -->
+            <div class="col-md-4 control-panel">
+                <h2 class="mb-4">
+                    <i class="fas fa-robot me-2"></i>
+                    Robot Control Center
+                </h2>
+                
+                <!-- Map Upload -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-map me-2"></i>
+                            Map Management
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Upload Area -->
+                        <div class="upload-area" id="upload-area">
+                            <i class="fas fa-cloud-upload-alt fa-2x mb-2"></i>
+                            <p>Drop SMAP file here or click to browse</p>
+                            <input type="file" id="smap-file" accept=".smap" style="display: none;">
+                        </div>
+                        
+                        <!-- Available Maps -->
+                        <div class="mt-3">
+                            <h6 style="color: white;">Available Maps:</h6>
+                            <div id="available-maps" class="mb-2">
+                                <small style="color: rgba(255, 255, 255, 0.7);">Loading...</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Current Map Info -->
+                        <div id="current-map-info" style="display: none;">
+                            <h6 style="color: white;">Current Map:</h6>
+                            <div class="map-info">
+                                <div><strong>Name:</strong> <span id="map-name">-</span></div>
+                                <div><strong>Type:</strong> <span id="map-type">-</span></div>
+                                <div><strong>Resolution:</strong> <span id="map-resolution">-</span>m</div>
+                                <div><strong>Points:</strong> <span id="map-points">-</span></div>
+                                <div><strong>Size:</strong> <span id="map-size">-</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connection Status -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-wifi me-2"></i>
+                            Connection Status
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="connection-status">
+                            <span class="status-indicator status-disconnected"></span>
+                            Robot Disconnected
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Robot Controls -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-gamepad me-2"></i>
+                            Robot Controls
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-12 text-center mb-2">
+                                <button class="btn btn-primary btn-robot" id="move-forward">
+                                    <i class="fas fa-arrow-up"></i> Forward
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button class="btn btn-primary btn-robot" id="turn-left">
+                                    <i class="fas fa-arrow-left"></i> Left
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button class="btn btn-primary btn-robot" id="turn-right">
+                                    <i class="fas fa-arrow-right"></i> Right
+                                </button>
+                            </div>
+                            <div class="col-12 text-center mt-2">
+                                <button class="btn btn-primary btn-robot" id="move-backward">
+                                    <i class="fas fa-arrow-down"></i> Backward
+                                </button>
+                            </div>
+                            <div class="col-6 mt-3">
+                                <button class="btn btn-danger btn-robot" id="stop">
+                                    <i class="fas fa-stop"></i> Stop
+                                </button>
+                            </div>
+                            <div class="col-6 mt-3">
+                                <button class="btn btn-success btn-robot" id="go-home">
+                                    <i class="fas fa-home"></i> Home
+                                </button>
+                            </div>
+                            <div class="col-12 mt-3">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <button class="btn btn-warning btn-robot" id="go-to-position" disabled>
+                                        <i class="fas fa-crosshairs"></i> Go to Selected Position
+                                    </button>
+                                    <span class="text-white ms-2" id="position-info">Click on the map to select a position</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Command Log -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-terminal me-2"></i>
+                            Command Log
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="command-log" style="height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.8em;">
+                            <div class="text-muted">Ready for commands...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Display -->
+            <div class="col-md-8 map-display">
+                <h2 class="mb-4">
+                    <i class="fas fa-map-marked-alt me-2"></i>
+                    Map Visualization
+                </h2>
+                
+                <div class="map-container" id="map-container">
+                    <div class="no-map-message">
+                        <i class="fas fa-map fa-3x mb-3 text-muted"></i>
+                        <p>No map loaded. Upload a SMAP file to get started.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let currentMapLoaded = false;
+        let selectedPosition = null;
+        let mapBounds = null;
+        let plotArea = null;
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAvailableMaps();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // File upload
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('smap-file');
+
+            uploadArea.addEventListener('click', () => fileInput.click());
+            uploadArea.addEventListener('dragover', handleDragOver);
+            uploadArea.addEventListener('drop', handleDrop);
+            uploadArea.addEventListener('dragleave', handleDragLeave);
+
+            fileInput.addEventListener('change', handleFileSelect);
+
+            // Robot control buttons
+            document.getElementById('move-forward').addEventListener('click', () => sendRobotCommand('move_forward'));
+            document.getElementById('move-backward').addEventListener('click', () => sendRobotCommand('move_backward'));
+            document.getElementById('turn-left').addEventListener('click', () => sendRobotCommand('turn_left'));
+            document.getElementById('turn-right').addEventListener('click', () => sendRobotCommand('turn_right'));
+            document.getElementById('stop').addEventListener('click', () => sendRobotCommand('stop'));
+            document.getElementById('go-home').addEventListener('click', () => sendRobotCommand('go_home'));
+            document.getElementById('go-to-position').addEventListener('click', () => goToSelectedPosition());
+        }
+
+        // Drag and drop handlers
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                uploadFile(files[0]);
+            }
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                uploadFile(file);
+            }
+        }
+
+        // File upload
+        function uploadFile(file) {
+            if (!file.name.endsWith('.smap')) {
+                logCommand('Error: Please select a .smap file', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('smap_file', file);
+
+            logCommand(`Uploading ${file.name}...`, 'info');
+
+            fetch('/upload_smap', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    logCommand(`Successfully uploaded ${data.filename}`, 'success');
+                    updateMapInfo(data.map_info, data.filename);
+                    loadMapVisualization();
+                } else {
+                    logCommand(`Upload failed: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                logCommand(`Upload error: ${error.message}`, 'error');
+            });
+        }
+
+        // Load available maps
+        function loadAvailableMaps() {
+            fetch('/get_available_maps')
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('available-maps');
+                if (data.success && data.maps.length > 0) {
+                    container.innerHTML = data.maps.map(map => 
+                        `<button class="btn btn-outline-light btn-sm me-1 mb-1" onclick="loadExistingMap('${map}')">${map}</button>`
+                    ).join('');
+                } else {
+                    container.innerHTML = '<small style="color: rgba(255, 255, 255, 0.7);">No maps found</small>';
+                }
+            })
+            .catch(error => {
+                document.getElementById('available-maps').innerHTML = '<small style="color: rgba(255, 255, 255, 0.7);">Error loading maps</small>';
+            });
+        }
+
+        // Load existing map
+        function loadExistingMap(mapName) {
+            logCommand(`Loading map: ${mapName}`, 'info');
+            
+            fetch(`/load_map/${mapName}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    logCommand(`Successfully loaded ${data.filename}`, 'success');
+                    updateMapInfo(data.map_info, data.filename);
+                    loadMapVisualization();
+                } else {
+                    logCommand(`Failed to load map: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                logCommand(`Error loading map: ${error.message}`, 'error');
+            });
+        }
+
+        // Update map info display
+        function updateMapInfo(mapInfo, filename) {
+            document.getElementById('map-name').textContent = mapInfo.name;
+            document.getElementById('map-type').textContent = mapInfo.type;
+            document.getElementById('map-resolution').textContent = mapInfo.resolution;
+            document.getElementById('map-points').textContent = 
+                `${mapInfo.normal_points} normal, ${mapInfo.advanced_points} advanced`;
+            
+            const width = (mapInfo.bounds.x_max - mapInfo.bounds.x_min).toFixed(1);
+            const height = (mapInfo.bounds.y_max - mapInfo.bounds.y_min).toFixed(1);
+            document.getElementById('map-size').textContent = `${width}m × ${height}m`;
+            
+            // Store map bounds for coordinate calculation
+            mapBounds = mapInfo.bounds;
+            
+            document.getElementById('current-map-info').style.display = 'block';
+            currentMapLoaded = true;
+        }
+
+        // Load map visualization
+        function loadMapVisualization() {
+            if (!currentMapLoaded) return;
+
+            const mapContainer = document.getElementById('map-container');
+            mapContainer.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin fa-2x"></i><p>Generating map visualization...</p></div>';
+
+            // Clear any selected position when loading new map
+            selectedPosition = null;
+            plotArea = null;
+            document.getElementById('go-to-position').disabled = true;
+            document.getElementById('position-info').textContent = 'Click on the map to select a position';
+
+            fetch('/get_map_image')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    mapContainer.innerHTML = `
+                        <div class="map-image-wrapper" id="map-image-wrapper">
+                            <img src="${data.image}" class="map-image" alt="Map Visualization" id="map-image">
+                        </div>
+                    `;
+                    
+                    // Store plot area and map bounds information
+                    plotArea = data.plot_area;
+                    if (data.map_bounds) {
+                        mapBounds = data.map_bounds;
+                    }
+                    
+                    // Add click listener to the map image
+                    const mapImage = document.getElementById('map-image');
+                    mapImage.addEventListener('click', handleMapClick);
+                    
+                    // Log plot area info for debugging
+                    console.log('Plot area:', plotArea);
+                    console.log('Map bounds:', mapBounds);
+                } else {
+                    mapContainer.innerHTML = `<div class="no-map-message text-danger">Error: ${data.error}</div>`;
+                }
+            })
+            .catch(error => {
+                mapContainer.innerHTML = `<div class="no-map-message text-danger">Error loading map: ${error.message}</div>`;
+            });
+        }
+
+        // Map click handling
+        function handleMapClick(event) {
+            if (!mapBounds || !plotArea) return;
+            
+            const mapImage = event.target;
+            const mapImageWrapper = document.getElementById('map-image-wrapper');
+            const rect = mapImage.getBoundingClientRect();
+            
+            // Get click coordinates relative to the image
+            const imageX = event.clientX - rect.left;
+            const imageY = event.clientY - rect.top;
+            
+            // Ensure click is within image bounds
+            if (imageX < 0 || imageX > mapImage.clientWidth || imageY < 0 || imageY > mapImage.clientHeight) {
+                return;
+            }
+            
+            // Since the entire image is now the plot area, we can directly convert
+            // Convert to coordinates within the image (0 to 1)
+            const plotX = imageX / mapImage.clientWidth;
+            const plotY = imageY / mapImage.clientHeight;
+            
+            // Convert to map coordinates
+            // plotX: 0 = x_min, 1 = x_max
+            // plotY: 0 = y_max, 1 = y_min (Y is flipped in image coordinates)
+            const mapX = mapBounds.x_min + plotX * (mapBounds.x_max - mapBounds.x_min);
+            const mapY = mapBounds.y_max - plotY * (mapBounds.y_max - mapBounds.y_min);
+            
+            // Store selected position
+            selectedPosition = { x: mapX, y: mapY };
+            
+            // Remove existing point
+            const existingPoint = document.querySelector('.map-point');
+            if (existingPoint) {
+                existingPoint.remove();
+            }
+            
+            // Add visual point at click location (relative to image wrapper)
+            const point = document.createElement('div');
+            point.className = 'map-point';
+            point.style.left = imageX + 'px';
+            point.style.top = imageY + 'px';
+            mapImageWrapper.appendChild(point);
+            
+            // Update UI
+            document.getElementById('go-to-position').disabled = false;
+            document.getElementById('position-info').textContent = 
+                `Selected: (${mapX.toFixed(2)}, ${mapY.toFixed(2)})`;
+            
+            logCommand(`Position selected: (${mapX.toFixed(2)}, ${mapY.toFixed(2)}) | Plot: (${plotX.toFixed(3)}, ${plotY.toFixed(3)}) | Image: (${imageX.toFixed(0)}, ${imageY.toFixed(0)})`, 'info');
+        }
+
+        // Go to selected position
+        function goToSelectedPosition() {
+            if (!selectedPosition) {
+                logCommand('No position selected', 'error');
+                return;
+            }
+            
+            logCommand(`Moving to position (${selectedPosition.x.toFixed(2)}, ${selectedPosition.y.toFixed(2)})`, 'info');
+            
+            fetch('/robot_command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    command: 'move_to_position',
+                    x: selectedPosition.x,
+                    y: selectedPosition.y 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    logCommand(data.message, 'success');
+                } else {
+                    logCommand(`Command failed: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                logCommand(`Command error: ${error.message}`, 'error');
+            });
+        }
+
+        // Robot command functions
+        function sendRobotCommand(command) {
+            logCommand(`Sending command: ${command}`, 'info');
+
+            fetch('/robot_command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ command: command })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    logCommand(data.message, 'success');
+                } else {
+                    logCommand(`Command failed: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                logCommand(`Command error: ${error.message}`, 'error');
+            });
+        }
+
+        // Command logging
+        function logCommand(message, type = 'info') {
+            const log = document.getElementById('command-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const typeClass = type === 'error' ? 'text-danger' : type === 'success' ? 'text-success' : 'text-info';
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = typeClass;
+            logEntry.innerHTML = `<small>${timestamp}</small> ${message}`;
+            
+            log.appendChild(logEntry);
+            log.scrollTop = log.scrollHeight;
+        }
+    </script>
+</body>
+</html>
