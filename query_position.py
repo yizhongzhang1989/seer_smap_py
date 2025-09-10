@@ -21,11 +21,9 @@ import json
 import time
 import struct
 import sys
+from util import packMasg
 
 # Protocol constants
-PACK_FMT_STR = '!BBHLH6s'  # Network byte order format
-MAGIC_BYTE = 0x5A
-VERSION = 0x01
 REQUEST_ID = 1004  # 0x03EC - robot_status_loc_req
 RESPONSE_ID = 11004  # 0x2AFC - robot_status_loc_res
 
@@ -35,34 +33,14 @@ class RobotPositionQuery:
         self.robot_port = robot_port
         self.socket = None
         
-    def pack_message(self, req_id, msg_type, msg={}):
-        """Pack message according to SEER protocol format"""
-        json_str = json.dumps(msg) if msg else ""
-        msg_len = len(json_str.encode('utf-8')) if msg else 0
-        
-        # Pack header: magic, version, req_id, msg_len, msg_type, reserved
-        header = struct.pack(PACK_FMT_STR, 
-                           MAGIC_BYTE, VERSION, req_id, msg_len, msg_type, 
-                           b'\x00\x00\x00\x00\x00\x00')
-        
-        print(f"📦 Packing message:")
-        print(f"   Magic: 0x{MAGIC_BYTE:02X}")
-        print(f"   Version: 0x{VERSION:02X}")
-        print(f"   Request ID: {req_id} (0x{req_id:04X})")
-        print(f"   Message Length: {msg_len}")
-        print(f"   Message Type: {msg_type} (0x{msg_type:04X})")
-        
-        raw_msg = header
-        if msg:
-            raw_msg += json_str.encode('utf-8')
-            print(f"   JSON Data: {msg}")
-        
-        return raw_msg
-    
     def unpack_header(self, data):
         """Unpack message header"""
         if len(data) < 16:
             raise ValueError(f"Header too short: {len(data)} bytes, expected 16")
+        
+        # Protocol constants for unpacking
+        PACK_FMT_STR = '!BBHLH6s'
+        MAGIC_BYTE = 0x5A
         
         header = struct.unpack(PACK_FMT_STR, data)
         magic, version, req_id, msg_len, msg_type, reserved = header
@@ -102,8 +80,8 @@ class RobotPositionQuery:
     def query_position(self):
         """Query robot position"""
         try:
-            # Create position query request (no JSON data needed)
-            request_msg = self.pack_message(1, REQUEST_ID, {})
+            # Create position query request using official packMasg function
+            request_msg = packMasg(1, REQUEST_ID, {})
             
             print(f"\n📤 Sending position query request:")
             print(f"   Raw bytes: {' '.join(f'{b:02X}' for b in request_msg)}")
@@ -124,7 +102,7 @@ class RobotPositionQuery:
             header = self.unpack_header(header_data)
             
             # Validate response
-            if header['magic'] != MAGIC_BYTE:
+            if header['magic'] != 0x5A:  # Magic byte constant
                 print(f"❌ Invalid magic byte: 0x{header['magic']:02X}")
                 return None
             

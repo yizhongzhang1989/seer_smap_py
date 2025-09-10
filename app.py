@@ -12,6 +12,11 @@ import matplotlib.pyplot as plt
 from seer_smap import SmapReader, SmapVisualizer
 from seer_controller import SeerController
 
+# Global configuration for robot IP address
+# Switch between localhost for testing and real robot IP for production
+ROBOT_IP = '192.168.192.5'  # Real robot IP
+# ROBOT_IP = '127.0.0.1'    # Localhost for testing with mock_robot_server.py
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'seer_robot_secret_key_2025'
 app.config['UPLOAD_FOLDER'] = 'temp'
@@ -47,7 +52,7 @@ def cleanup_temp_files():
     except Exception as e:
         app.logger.error(f"Error cleaning temp files: {e}")
 
-def start_robot_controller(robot_ip='192.168.192.5'):
+def start_robot_controller(robot_ip=ROBOT_IP):
     """Initialize and start the robot controller"""
     global robot_controller
     
@@ -461,7 +466,7 @@ def connect_robot():
     global robot_controller
     
     try:
-        robot_ip = request.args.get('ip', '192.168.192.5')
+        robot_ip = request.args.get('ip', ROBOT_IP)
         
         if robot_controller:
             robot_controller.stop_position_monitoring()
@@ -509,7 +514,7 @@ def handle_disconnect():
 @socketio.on('start_robot_controller')
 def handle_start_robot_controller(data):
     """Handle request to start robot controller"""
-    robot_ip = data.get('robot_ip', '192.168.192.5')
+    robot_ip = data.get('robot_ip', ROBOT_IP)
     
     if start_robot_controller(robot_ip):
         emit('robot_controller_status', {
@@ -552,8 +557,8 @@ def handle_get_robot_status():
         })
 
 if __name__ == '__main__':
-    # Start the robot controller automatically on startup (connect to real robot)
-    start_robot_controller('192.168.192.5')
+    # Start the robot controller automatically on startup
+    start_robot_controller(ROBOT_IP)
     
     # Run the Flask-SocketIO application
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)

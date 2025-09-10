@@ -20,11 +20,7 @@ import threading
 import queue
 from datetime import datetime
 from typing import Optional, Dict, Any
-
-# Protocol constants
-PACK_FMT_STR = '!BBHLH6s'  # Network byte order format
-MAGIC_BYTE = 0x5A
-VERSION = 0x01
+from util import packMasg
 
 # Command IDs
 REQUEST_POSITION = 1004     # 0x03EC - robot_status_loc_req
@@ -62,31 +58,12 @@ class SeerController:
         self.position_callbacks = []
         self.error_callbacks = []
         
-    def pack_message(self, req_id: int, msg_type: int, msg: Dict = None) -> bytes:
-        """Pack message according to SEER protocol format"""
-        if msg is None:
-            msg = {}
-            
-        json_str = json.dumps(msg) if msg else ""
-        msg_len = len(json_str.encode('utf-8')) if msg else 0
-        
-        # Pack header: magic, version, req_id, msg_len, msg_type, reserved
-        header = struct.pack(PACK_FMT_STR, 
-                           MAGIC_BYTE, VERSION, req_id, msg_len, msg_type, 
-                           b'\x00\x00\x00\x00\x00\x00')
-        
-        raw_msg = header
-        if msg:
-            raw_msg += json_str.encode('utf-8')
-        
-        return raw_msg
-    
     def unpack_header(self, data: bytes) -> Dict[str, Any]:
         """Unpack message header"""
         if len(data) < 16:
             raise ValueError(f"Header too short: {len(data)} bytes, expected 16")
         
-        header = struct.unpack(PACK_FMT_STR, data)
+        header = struct.unpack('!BBHLH6s', data)
         magic, version, req_id, msg_len, msg_type, reserved = header
         
         return {
@@ -137,8 +114,8 @@ class SeerController:
             return None
         
         try:
-            # Create and send request
-            request_msg = self.pack_message(req_id, msg_type, msg)
+            # Create and send request using official packMasg function
+            request_msg = packMasg(req_id, msg_type, msg)
             self.socket.send(request_msg)
             
             # Receive response header
@@ -152,13 +129,12 @@ class SeerController:
             header = self.unpack_header(header_data)
             
             # Validate response
-            if header['magic'] != MAGIC_BYTE:
+            if header['magic'] != 0x5A:  # Magic byte constant
                 return None
             
             # Receive JSON data if present
             json_data = {}
             if header['msg_len'] > 0:
-                print(f"📥 Receiving JSON payload: {header['msg_len']} bytes")
                 json_bytes = b''
                 remaining = header['msg_len']
                 

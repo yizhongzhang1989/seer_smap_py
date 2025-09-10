@@ -29,10 +29,9 @@ import json
 import sys
 import time
 from typing import Dict, Any, Optional
+from util import packMasg
 
 # Protocol constants
-MAGIC_BYTE = 0x5A
-VERSION = 0x01
 REQUEST_TURN = 3056   # 0x0BF0
 RESPONSE_TURN = 13056 # 0x3300
 
@@ -50,30 +49,12 @@ class SeerRotationController:
         self.socket = None
         self.connected = False
         
-    def pack_message(self, req_id: int, msg_type: int, msg: Dict = None) -> bytes:
-        """Pack message according to SEER protocol format"""
-        if msg is None:
-            msg = {}
-            
-        json_str = json.dumps(msg) if msg else ""
-        msg_len = len(json_str.encode('utf-8')) if json_str else 0
-        
-        # Pack header: magic(1) + version(1) + req_id(2) + msg_len(4) + msg_type(2) + reserved(6)
-        header = struct.pack('<BBHIHH4x', 
-                           MAGIC_BYTE, VERSION, req_id, msg_len, msg_type, 0)
-        
-        raw_msg = header
-        if msg:
-            raw_msg += json_str.encode('utf-8')
-        
-        return raw_msg
-    
     def unpack_header(self, data: bytes) -> Dict[str, Any]:
         """Unpack message header"""
         if len(data) < 16:
             raise ValueError("Header data too short")
         
-        magic, version, req_id, msg_len, msg_type, reserved = struct.unpack('<BBHIHH4x', data)
+        magic, version, req_id, msg_len, msg_type, reserved = struct.unpack('!BBHLH6s', data)
         
         return {
             'magic': magic,
@@ -121,8 +102,8 @@ class SeerRotationController:
             return None
         
         try:
-            # Create and send request
-            request_msg = self.pack_message(req_id, msg_type, msg)
+            # Create and send request using official packMasg function
+            request_msg = packMasg(req_id, msg_type, msg)
             print(f"📤 Sending rotation command...")
             self.socket.send(request_msg)
             
@@ -138,7 +119,7 @@ class SeerRotationController:
             header = self.unpack_header(header_data)
             
             # Validate response
-            if header['magic'] != MAGIC_BYTE:
+            if header['magic'] != 0x5A:  # Magic byte constant
                 print(f"❌ Invalid magic byte: 0x{header['magic']:02X}")
                 return None
             

@@ -17,11 +17,7 @@ import struct
 import sys
 import argparse
 from typing import Optional, Dict, Any
-
-# Protocol constants
-PACK_FMT_STR = '!BBHLH6s'  # Network byte order format
-MAGIC_BYTE = 0x5A
-VERSION = 0x01
+from util import packMasg
 
 # Motion control commands
 REQUEST_MOTION = 2010      # 0x07DA - robot_control_motion_req
@@ -60,23 +56,6 @@ class SeerMotionController:
                 pass
             self.socket = None
     
-    def pack_message(self, session_id: int, msg_type: int, payload: Dict) -> bytes:
-        """Pack message according to SEER protocol"""
-        # Convert payload to JSON bytes
-        json_str = json.dumps(payload, separators=(',', ':'))
-        json_bytes = json_str.encode('utf-8')
-        
-        # Create header
-        header = struct.pack(PACK_FMT_STR, 
-                           MAGIC_BYTE,           # magic_byte
-                           VERSION,              # version  
-                           session_id,           # session_id
-                           len(json_bytes),      # msg_len
-                           msg_type,             # msg_type
-                           b'\x00' * 6)         # reserved
-        
-        return header + json_bytes
-    
     def send_motion_command(self, vx: float = 0.0, vy: float = 0.0, w: float = 0.0, 
                           duration: Optional[int] = None, steer: Optional[int] = None, 
                           real_steer: Optional[float] = None) -> Optional[Dict]:
@@ -101,8 +80,8 @@ class SeerMotionController:
             payload['real_steer'] = real_steer
         
         try:
-            # Pack and send message
-            packet = self.pack_message(self.request_id, REQUEST_MOTION, payload)
+            # Pack and send message using official packMasg function
+            packet = packMasg(self.request_id, REQUEST_MOTION, payload)
             
             print(f"📤 Sending motion command: {payload}")
             self.socket.send(packet)
@@ -114,9 +93,9 @@ class SeerMotionController:
                 return None
             
             # Unpack header
-            magic, version, session_id, msg_len, msg_type, reserved = struct.unpack(PACK_FMT_STR, header_data)
+            magic, version, session_id, msg_len, msg_type, reserved = struct.unpack('!BBHLH6s', header_data)
             
-            if magic != MAGIC_BYTE:
+            if magic != 0x5A:  # Magic byte constant
                 print(f"❌ Invalid magic byte: 0x{magic:02X}")
                 return None
             
