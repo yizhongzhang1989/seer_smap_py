@@ -79,12 +79,6 @@ class SeerController:
         if msg:
             raw_msg += json_str.encode('utf-8')
         
-        print(f"📦 Packed message: magic=0x{MAGIC_BYTE:02X}, version={VERSION}, "
-              f"req_id={req_id}, msg_len={msg_len}, msg_type={msg_type}")
-        print(f"📦 Total packet size: {len(raw_msg)} bytes")
-        if msg:
-            print(f"📦 JSON payload: {json_str}")
-        
         return raw_msg
     
     def unpack_header(self, data: bytes) -> Dict[str, Any]:
@@ -113,7 +107,6 @@ class SeerController:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(5)  # 5 second timeout
             
-            print(f"🔌 Connecting to robot at {self.robot_ip}:{self.robot_status_port}...")
             self.socket.connect((self.robot_ip, self.robot_status_port))
             
             self.connected = True
@@ -121,11 +114,9 @@ class SeerController:
             if self.stats['start_time'] is None:
                 self.stats['start_time'] = time.time()
             
-            print(f"✅ Connected successfully!")
             return True
             
         except Exception as e:
-            print(f"❌ Connection failed: {e}")
             self.connected = False
             return False
     
@@ -135,7 +126,6 @@ class SeerController:
         if self.socket:
             try:
                 self.socket.close()
-                print(f"🔌 Disconnected from robot")
             except:
                 pass
             self.socket = None
@@ -144,13 +134,11 @@ class SeerController:
                     expected_response: int = None, timeout: float = 5.0) -> Optional[Dict]:
         """Send command to robot and receive response"""
         if not self.connected:
-            print(f"❌ Not connected to robot")
             return None
         
         try:
             # Create and send request
             request_msg = self.pack_message(req_id, msg_type, msg)
-            print(f"📤 Sending packet: req_id={req_id}, msg_type={msg_type}, size={len(request_msg)} bytes")
             self.socket.send(request_msg)
             
             # Receive response header
@@ -158,23 +146,14 @@ class SeerController:
             header_data = self.socket.recv(16)
             
             if not header_data:
-                print(f"❌ No response received")
                 return None
-            
-            print(f"📥 Received header: {len(header_data)} bytes - {header_data.hex()}")
             
             # Parse header
             header = self.unpack_header(header_data)
-            print(f"📋 Header parsed: magic=0x{header['magic']:02X}, version={header['version']}, "
-                  f"req_id={header['req_id']}, msg_len={header['msg_len']}, msg_type={header['msg_type']}")
             
             # Validate response
             if header['magic'] != MAGIC_BYTE:
-                print(f"❌ Invalid magic byte: 0x{header['magic']:02X} (expected 0x{MAGIC_BYTE:02X})")
                 return None
-            
-            if expected_response and header['msg_type'] != expected_response:
-                print(f"⚠️  Unexpected response type: {header['msg_type']} (expected {expected_response})")
             
             # Receive JSON data if present
             json_data = {}
@@ -188,43 +167,29 @@ class SeerController:
                     chunk = self.socket.recv(chunk_size)
                     
                     if not chunk:
-                        print(f"❌ Connection closed while receiving data")
                         break
                     
-                    print(f"📥 Received chunk: {len(chunk)} bytes, remaining: {remaining - len(chunk)}")
                     json_bytes += chunk
                     remaining -= len(chunk)
                 
                 # Parse JSON
                 try:
                     json_str = json_bytes.decode('utf-8')
-                    print(f"📄 Raw JSON string: {json_str}")
                     json_data = json.loads(json_str)
-                    print(f"✅ JSON parsed successfully: {json_data}")
                 except Exception as e:
-                    print(f"❌ JSON parsing error: {e}")
-                    print(f"Raw bytes: {json_bytes.hex()}")
                     return None
-            else:
-                print(f"📄 No JSON payload (msg_len=0)")
             
-            print(f"🎯 Command completed successfully")
             return json_data
             
         except socket.timeout:
-            print(f"❌ Timeout waiting for response (timeout={timeout}s)")
             return None
         except Exception as e:
-            print(f"❌ Error sending command: {e}")
             self.connected = False
             return None
     
     def query_position(self) -> Optional[Dict]:
         """Query robot position"""
         self.stats['position_queries'] += 1
-        
-        print(f"\n🔍 Position Query #{self.stats['position_queries']}")
-        print(f"📤 Sending position request (ID: {REQUEST_POSITION})")
         
         result = self.send_command(1, REQUEST_POSITION, {}, RESPONSE_POSITION)
         
@@ -255,18 +220,17 @@ class SeerController:
                 try:
                     callback(result)
                 except Exception as e:
-                    print(f"⚠️  Position callback error: {e}")
+                    pass
             
         else:
             self.stats['failed_queries'] += 1
-            print(f"❌ Position query failed!")
             
             # Call error callbacks
             for callback in self.error_callbacks:
                 try:
                     callback("Position query failed")
                 except Exception as e:
-                    print(f"⚠️  Error callback error: {e}")
+                    pass
         
         return result
     
@@ -279,26 +243,18 @@ class SeerController:
             
             # Attempt to reconnect if disconnected
             if not self.connected:
-                print(f"🔄 Attempting to reconnect...")
                 if not self.connect():
-                    print(f"❌ Reconnection failed, waiting {self.position_interval}s before retry")
                     time.sleep(self.position_interval)
                     continue
             
             # Query position
             try:
-                print(f"\n⏰ Position monitoring cycle at {datetime.now().strftime('%H:%M:%S')}")
                 position = self.query_position()
                 if position is None and self.connected:
                     # Query failed but we're still "connected", try to reconnect
-                    print(f"🔄 Position query failed, reconnecting...")
                     self.disconnect()
-                elif position is not None:
-                    # Position received - (x, y) already printed in query_position
-                    pass
                     
             except Exception as e:
-                print(f"❌ Position monitoring error: {e}")
                 self.disconnect()
             
             # Sleep for the remaining time to maintain interval
@@ -306,10 +262,7 @@ class SeerController:
             sleep_time = max(0, self.position_interval - elapsed)
             
             if sleep_time > 0:
-                print(f"💤 Sleeping for {sleep_time:.2f}s until next query")
                 time.sleep(sleep_time)
-        
-        print(f"🛑 Position monitoring stopped")
     
     def start_position_monitoring(self):
         """Start position monitoring thread"""
@@ -450,7 +403,6 @@ def main():
     try:
         controller.run()
     except Exception as e:
-        print(f"❌ Unexpected error: {e}")
         controller.stop_position_monitoring()
         controller.disconnect()
         return 1
