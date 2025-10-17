@@ -108,6 +108,50 @@
             100% { box-shadow: 0 0 0 0 rgba(0, 102, 255, 0); }
         }
         
+        .robot-marker {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: #00ff00;
+            border: 2px solid #008800;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0, 255, 0, 0.4);
+            z-index: 1000;
+            animation: robot-pulse 2s infinite;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+        }
+
+        .robot-arrow {
+            position: absolute;
+            width: 2px;
+            height: 25px;
+            background-color: #ff0000;
+            top: 50%;  /* Start from center of robot marker */
+            left: 50%; /* Start from center of robot marker */
+            transform: translate(-1px, -25px);  /* Center horizontally, position so arrow starts at robot center */
+            transform-origin: 1px 25px;  /* Rotate around the bottom point of the arrow (robot center) */
+        }
+
+        .robot-arrow::after {
+            content: '';
+            position: absolute;
+            top: -4px;  /* Position arrowhead at the far end */
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-bottom: 8px solid #ff0000;
+            transform: translateX(-50%);
+        }
+        
+        @keyframes robot-pulse {
+            0% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.1); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+        
         .upload-area {
             border: 2px dashed rgba(255, 255, 255, 0.3);
             border-radius: 15px;
@@ -282,6 +326,32 @@
                     </div>
                 </div>
 
+                <!-- Robot Status -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-robot me-2"></i>
+                            Robot Status
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-12 mb-2">
+                                <strong>Connection:</strong>
+                                <span id="connection-status" class="ms-2">
+                                    <i class="fas fa-wifi text-secondary"></i> Connecting...
+                                </span>
+                            </div>
+                            <div class="col-12">
+                                <strong>Position:</strong>
+                                <div id="robot-position" class="mt-1 small">
+                                    <div class="text-muted">Waiting for position data...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Command Log -->
                 <div class="card">
                     <div class="card-header">
@@ -316,18 +386,308 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.5/socket.io.js"></script>
     <script>
         // Global variables
         let currentMapLoaded = false;
         let selectedPosition = null;
         let mapBounds = null;
         let plotArea = null;
+        let socket = null;
+        // Position polling variables
+        let robotPosition = null;
+        let positionPollingInterval = null;
+        let isPolling = false;
+
+        // Start polling for robot position
+        function startPositionPolling() {
+            if (isPolling) return;
+            
+            isPolling = true;
+            console.log('Starting position polling at 1Hz...');
+            
+            // Poll every 1000ms (1Hz)
+            positionPollingInterval = setInterval(pollRobotPosition, 1000);
+            
+            // Also poll immediately
+            pollRobotPosition();
+        }
+
+        // Stop polling for robot position
+        function stopPositionPolling() {
+            if (positionPollingInterval) {
+                clearInterval(positionPollingInterval);
+                positionPollingInterval = null;
+            }
+            isPolling = false;
+            console.log('Stopped position polling');
+        }
+
+        // Poll robot position from server
+        function pollRobotPosition() {
+            fetch('/api/robot/position')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Position poll response:', data);
+                    
+                    if (data.status === 'success' && data.position) {
+                        updateRobotPosition(data.position);
+                        updateConnectionStatus(true);
+                    } else if (data.status === 'no_data') {
+                        updateConnectionStatus(true);
+                        // Robot connected but no position data yet
+                        document.getElementById('robot-position').innerHTML = 'Waiting for position data...';
+                    } else if (data.status === 'disconnected') {
+                        updateConnectionStatus(false);
+                        document.getElementById('robot-position').innerHTML = 'Robot disconnected';
+                    } else {
+                        console.error('Position poll error:', data);
+                        updateConnectionStatus(false);
+                        document.getElementById('robot-position').innerHTML = 'Error: ' + (data.error || 'Unknown error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Position poll failed:', error);
+                    updateConnectionStatus(false);
+                    document.getElementById('robot-position').innerHTML = 'Connection failed';
+                });
+        }
+        let robotMarker = null;
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
             loadAvailableMaps();
             setupEventListeners();
+            startPositionPolling();
         });
+
+        // Position polling replaces SocketIO for simpler architecture
+        /*
+        function initializeSocketIO() {
+            // Initialize SocketIO connection
+            socket = io();
+            
+            // Handle connection events
+            socket.on('connect', function() {
+                console.log('Connected to server');
+                updateConnectionStatus(true);
+                // Request current robot status
+                socket.emit('get_robot_status');
+            });
+
+            socket.on('disconnect', function() {
+                console.log('Disconnected from server');
+                updateConnectionStatus(false);
+            });
+            
+            // Handle robot position updates
+            socket.on('robot_position_update', function(data) {
+                console.log('Robot position update received:', data);
+                updateRobotPosition(data.position);
+            });
+            
+            // Handle robot controller status
+            socket.on('robot_controller_status', function(data) {
+                console.log('Robot controller status:', data);
+                showNotification(data.message, data.status === 'connected' ? 'success' : 'danger');
+            });
+            
+            // Handle robot commands
+            socket.on('robot_command_sent', function(data) {
+                console.log('Robot command sent:', data);
+                showNotification(data.message, 'info');
+            });
+            
+            // Handle robot status response
+            socket.on('robot_status_response', function(data) {
+                console.log('Robot status response:', data);
+                if (data.connected && data.position) {
+                    updateRobotPosition(data.position);
+                }
+            });
+        }
+        */
+        
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('connection-status');
+            if (statusElement) {
+                statusElement.innerHTML = connected ? 
+                    '<i class="fas fa-wifi text-success"></i> Connected' : 
+                    '<i class="fas fa-wifi text-danger"></i> Disconnected';
+            }
+        }
+
+        function updateRobotPosition(position) {
+            console.log('Updating robot position:', position);
+            robotPosition = position;
+            updatePositionDisplay();
+            
+            if (currentMapLoaded && mapBounds && plotArea) {
+                console.log('Map is loaded, drawing robot on map');
+                drawRobotOnMap();
+            } else {
+                console.log('Map not loaded yet:', {
+                    currentMapLoaded: currentMapLoaded,
+                    mapBounds: mapBounds,
+                    plotArea: plotArea
+                });
+            }
+        }
+
+        function drawRobotOnMap() {
+            if (!robotPosition || !mapBounds || !plotArea) {
+                console.log('Missing requirements for drawing robot:', {
+                    robotPosition: !!robotPosition,
+                    mapBounds: !!mapBounds,
+                    plotArea: !!plotArea
+                });
+                return;
+            }
+            
+            const x = robotPosition.x;
+            const y = robotPosition.y;
+            
+            if (x === undefined || y === undefined) {
+                console.log('Robot position missing x or y coordinates');
+                return;
+            }
+            
+            console.log(`Drawing robot at position: (${x}, ${y})`);
+            console.log('Map bounds:', mapBounds);
+            console.log('Plot area:', plotArea);
+            
+            // Convert robot coordinates to image coordinates (same as mouse click handling)
+            const mapImage = document.getElementById('map-image');
+            if (!mapImage) {
+                console.error('Map image not found!');
+                return;
+            }
+            
+            // Convert to coordinates within the image (0 to 1)
+            const plotX = (x - mapBounds.x_min) / (mapBounds.x_max - mapBounds.x_min);
+            const plotY = (mapBounds.y_max - y) / (mapBounds.y_max - mapBounds.y_min);
+            
+            // Convert to actual image pixel coordinates (same as mouse click)
+            const imageX = plotX * mapImage.clientWidth;
+            const imageY = plotY * mapImage.clientHeight;
+            
+            console.log(`Converted to image coordinates: (${imageX}, ${imageY})`);
+            
+            // Remove existing robot marker
+            if (robotMarker) {
+                robotMarker.remove();
+            }
+            
+            // Create robot marker - green circle with directional arrow
+            const mapImageWrapper = document.getElementById('map-image-wrapper');
+            if (!mapImageWrapper) {
+                console.error('Map image wrapper not found!');
+                return;
+            }
+
+            robotMarker = document.createElement('div');
+            robotMarker.className = 'robot-marker';
+            robotMarker.style.left = imageX + 'px';
+            robotMarker.style.top = imageY + 'px';
+            
+            // Create arrow to show robot's front direction using SVG
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.style.position = 'absolute';
+            svg.style.left = '50%';  // Center horizontally within the robot marker
+            svg.style.top = '50%';   // Center vertically within the robot marker
+            svg.style.width = '50px';
+            svg.style.height = '50px';
+            svg.style.pointerEvents = 'none';
+            svg.style.transform = 'translate(-50%, -50%)'; // Center the SVG itself
+            
+            // Calculate arrow end point based on robot's angle
+            const angleRad = robotPosition.angle || 0;
+            const angleDeg = angleRad * 180 / Math.PI;
+            const arrowLength = 20; // pixels
+            
+            // SVG center point (this will be at the robot's center)
+            const centerX = 25;
+            const centerY = 25;
+            
+            // Calculate end point (need to negate angle due to Y-axis flip in screen coordinates)
+            const endX = centerX + arrowLength * Math.cos(-angleRad);
+            const endY = centerY + arrowLength * Math.sin(-angleRad);
+            
+            // Create arrow line
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', centerX);
+            line.setAttribute('y1', centerY);
+            line.setAttribute('x2', endX);
+            line.setAttribute('y2', endY);
+            line.setAttribute('stroke', '#ff0000');
+            line.setAttribute('stroke-width', '2');
+            
+            // Create arrowhead
+            const arrowhead = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            const headSize = 4;
+            const headX = endX - headSize * Math.cos(-angleRad);
+            const headY = endY - headSize * Math.sin(-angleRad);
+            const perpX = headSize * Math.sin(-angleRad);
+            const perpY = -headSize * Math.cos(-angleRad);
+            
+            const points = [
+                `${endX},${endY}`,
+                `${headX + perpX},${headY + perpY}`,
+                `${headX - perpX},${headY - perpY}`
+            ].join(' ');
+            
+            arrowhead.setAttribute('points', points);
+            arrowhead.setAttribute('fill', '#ff0000');
+            
+            svg.appendChild(line);
+            svg.appendChild(arrowhead);
+            robotMarker.appendChild(svg);
+            robotMarker.title = `Robot Position: (${x.toFixed(2)}, ${y.toFixed(2)}), Angle: ${angleDeg.toFixed(1)}°`;
+
+            mapImageWrapper.appendChild(robotMarker);
+            console.log(`Robot marker added at (${x.toFixed(2)}, ${y.toFixed(2)}) with angle ${angleDeg.toFixed(1)}°`);
+        }
+
+        function updatePositionDisplay() {
+            const positionElement = document.getElementById('robot-position');
+            if (positionElement && robotPosition) {
+                const x = robotPosition.x || 'N/A';
+                const y = robotPosition.y || 'N/A';
+                const angle = robotPosition.angle || 0;
+                const angleDeg = (angle * 180 / Math.PI).toFixed(1);
+                const confidence = robotPosition.confidence || 'N/A';
+                
+                positionElement.innerHTML = `
+                    <div><strong>Position:</strong> (${x}, ${y})</div>
+                    <div><strong>Angle:</strong> ${angleDeg}°</div>
+                    <div><strong>Confidence:</strong> ${confidence}</div>
+                `;
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type} alert-dismissible fade show`;
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.right = '20px';
+            notification.style.zIndex = '9999';
+            notification.style.minWidth = '300px';
+            notification.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
 
         function setupEventListeners() {
             // File upload
