@@ -294,7 +294,7 @@ class RobotTCPClient:
 def main():
     """Main function"""
     # Default robot settings
-    robot_ip = '192.168.192.5'
+    robot_ip = '192.168.1.123'
     robot_port = 19301
     
     # Parse command line arguments

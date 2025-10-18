@@ -366,7 +366,7 @@ def error_callback(error_message):
 def main():
     """Main function"""
     # Default robot settings
-    robot_ip = '192.168.192.5'
+    robot_ip = '192.168.1.123'
     
     # Parse command line arguments for IP address only
     if len(sys.argv) > 1:
