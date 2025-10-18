@@ -75,7 +75,7 @@ class SeerControlController(SeerControllerBase):
         """
         super().__init__(robot_ip, robot_port)
     
-    def stop(self, **params) -> Optional[Dict[str, Any]]:
+    def stop(self) -> Optional[Dict[str, Any]]:
         """
         Stop open-loop motion - Halt all open-loop movements.
         
@@ -89,7 +89,7 @@ class SeerControlController(SeerControllerBase):
         return self.send_command(
             req_id=1,
             msg_type=req_id,
-            msg=params,
+            msg={},  # Empty payload
             expected_response=resp_id,
             timeout=5.0
         )

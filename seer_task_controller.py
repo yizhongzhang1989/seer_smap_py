@@ -88,18 +88,16 @@ class SeerTaskController(SeerControllerBase):
                  id: Optional[str] = None,
                  source_id: Optional[str] = None,
                  task_id: Optional[str] = None,
-                 angle: Optional[float] = None,
                  spin: Optional[bool] = None,
                  operation: Optional[str] = None,
-                 jack_height: Optional[float] = None,
-                 **extra_params) -> Optional[Dict[str, Any]]:
+                 **params) -> Optional[Dict[str, Any]]:
         """
         Path navigation - Navigate robot to target position.
         
         Manual: https://seer-group.feishu.cn/wiki/Q26SwaNoGisuLWk2vCxcPfVWn2e
         
         This function supports many parameters. Frequently used parameters are explicitly
-        defined, and additional parameters can be passed via **extra_params or as a dict.
+        defined, and additional parameters can be passed via **params.
         
         Args:
             id: Target station name. Use "SELF_POSITION" when executing operation in place
@@ -109,8 +107,6 @@ class SeerTaskController(SeerControllerBase):
                 - Optional parameter
             task_id: Task number/identifier
                 - Optional parameter
-            angle: Target angle in world coordinate system, unit: radians
-                - Optional parameter
             spin: Whether to enable follow-up rotation
                 - Optional parameter
             operation: Control jack device action, supported actions:
@@ -119,18 +115,16 @@ class SeerTaskController(SeerControllerBase):
                 - "JackHeight": Jack to height
                 - "Wait": No action (default)
                 - Optional parameter, defaults to "Wait"
-            jack_height: Jack height value. When JackLoad or JackUnload is used,
-                        this value is used as the target jack height
-                - Optional parameter
-            **extra_params: Additional navigation parameters as key-value pairs.
-                           These will be merged with explicitly defined parameters.
+            **params: Additional navigation parameters as key-value pairs.
+                      These will be merged with explicitly defined parameters.
+                      Can include: jack_height, x, y, z, etc.
         
         Returns:
             Response dictionary if successful, None if failed
             
         Examples:
             # Navigate to a named station
-            result = controller.gotarget(id="Station1", angle=0.0)
+            result = controller.gotarget(id="Station1")
             
             # Navigate from current position to target
             result = controller.gotarget(id="Station2", source_id="SELF_POSITION", spin=True)
@@ -139,7 +133,7 @@ class SeerTaskController(SeerControllerBase):
             result = controller.gotarget(id="SELF_POSITION")
             
             # Navigate with task ID
-            result = controller.gotarget(id="Station3", task_id="TASK_001", angle=1.57)
+            result = controller.gotarget(id="Station3", task_id="TASK_001")
             
             # Jack up to load cargo at station
             result = controller.gotarget(id="LoadStation", operation="JackLoad", jack_height=0.5)
@@ -150,29 +144,25 @@ class SeerTaskController(SeerControllerBase):
             # Jack to specific height
             result = controller.gotarget(id="Station4", operation="JackHeight", jack_height=0.3)
             
-            # Using extra parameters
-            result = controller.gotarget(id="Station5", x=1.0, y=2.0, z=0.0)
+            # Using additional parameters (including angle via **params)
+            result = controller.gotarget(id="Station5", x=1.0, y=2.0, z=0.0, angle=1.57)
         """
         req_id, resp_id, desc = TASK_COMMANDS['gotarget']
         
-        # Build payload starting with extra_params
-        payload = dict(extra_params)
+        # Build payload starting with params
+        payload = dict(params)
         
-        # Add explicitly defined parameters if provided (they override extra_params)
+        # Add explicitly defined parameters if provided (they override params)
         if id is not None:
             payload['id'] = id
         if source_id is not None:
             payload['source_id'] = source_id
         if task_id is not None:
             payload['task_id'] = task_id
-        if angle is not None:
-            payload['angle'] = angle
         if spin is not None:
             payload['spin'] = spin
         if operation is not None:
             payload['operation'] = operation
-        if jack_height is not None:
-            payload['jack_height'] = jack_height
         
         return self.send_command(
             req_id=1,
