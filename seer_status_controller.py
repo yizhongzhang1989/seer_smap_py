@@ -272,12 +272,6 @@ class SeerStatusController(SeerControllerBase):
                     qstats['success_rate'] = 0.0
                 all_stats[qtype] = qstats
             return all_stats
-    
-    def __repr__(self) -> str:
-        """String representation of the controller."""
-        status = "connected" if self.connected else "disconnected"
-        return (f"SeerStatusController(robot_ip='{self.robot_ip}', "
-                f"robot_port={self.robot_port}, status='{status}')")
 
 
 def main():
