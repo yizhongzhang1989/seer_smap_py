@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-SEER Robot Navigation Controller
+SEER Robot Task Controller
 
-This module provides navigation and motion control functions for SEER robots.
+This module provides task and motion control functions for SEER robots.
 Each control command has its own dedicated function with specific parameters.
 
 Features:
@@ -13,10 +13,10 @@ Features:
 - Task chain management
 
 Control commands:
-- Navigation: gotarget, gotargetlist, translate, turn, circular, spin
+- Task: gotarget, gotargetlist, translate, turn, circular, spin
 - Control: pause, resume, cancel
 - Path: path (enable/disable), cleartargetlist, safeclearmovements
-- Task: tasklist_status, tasklist_list, tasklist_name, target_path
+- Task Chain: tasklist_status, tasklist_list, tasklist_name, target_path
 
 Manual: https://seer-group.feishu.cn/wiki/WsI2wM46YiESh8k12EBclv23nOf?table=tblObW6PmjUPTyTn&view=vewiqqgyEX
 
@@ -29,9 +29,9 @@ from typing import Optional, Dict, Any, List
 from seer_controller_base import SeerControllerBase
 
 
-# Navigation control command IDs
+# Task control command IDs
 # Format: (request_id, response_id, description)
-NAVIGATION_COMMANDS = {
+TASK_COMMANDS = {
     'gotarget': (3051, 13051, 'Path navigation'),
     'gotargetlist': (3066, 13066, 'Specified path navigation'),
     'translate': (3055, 13055, 'Translation'),
@@ -39,9 +39,9 @@ NAVIGATION_COMMANDS = {
     'circular': (3058, 13058, 'Circular motion'),
     'path': (3059, 13059, 'Enable and disable routes'),
     'spin': (3057, 13057, 'Pallet rotation'),
-    'pause': (3001, 13001, 'Pause current navigation'),
-    'resume': (3002, 13002, 'Resume current navigation'),
-    'cancel': (3003, 13003, 'Cancel current navigation'),
+    'pause': (3001, 13001, 'Pause current task'),
+    'resume': (3002, 13002, 'Resume current task'),
+    'cancel': (3003, 13003, 'Cancel current task'),
     'tasklist_status': (3101, 13101, 'Query robot task chain'),
     'tasklist_list': (3115, 13115, 'Query all robot task chains'),
     'tasklist_name': (3106, 13106, 'Execute pre-stored task chain'),
@@ -51,15 +51,15 @@ NAVIGATION_COMMANDS = {
 }
 
 
-class SeerNavigationController(SeerControllerBase):
+class SeerTaskController(SeerControllerBase):
     """
-    SEER Robot Navigation Controller.
+    SEER Robot Task Controller.
     
-    Provides dedicated functions for each navigation and motion control command.
+    Provides dedicated functions for each task and motion control command.
     Each command has specific parameters and JSON payload structure.
     
     Example:
-        controller = SeerNavigationController('192.168.192.5', 19206)
+        controller = SeerTaskController('192.168.192.5', 19206)
         controller.connect()
         
         # Navigate to target
@@ -68,7 +68,7 @@ class SeerNavigationController(SeerControllerBase):
         # Rotate robot
         result = controller.turn(angle=1.57, angular_velocity=0.5)
         
-        # Pause navigation
+        # Pause task
         result = controller.pause()
         
         controller.disconnect()
@@ -76,7 +76,7 @@ class SeerNavigationController(SeerControllerBase):
     
     def __init__(self, robot_ip: str = '192.168.192.5', robot_port: int = 19206):
         """
-        Initialize the navigation controller.
+        Initialize the task controller.
         
         Args:
             robot_ip: IP address of the robot (default: 192.168.192.5)
@@ -153,7 +153,7 @@ class SeerNavigationController(SeerControllerBase):
             # Using extra parameters
             result = controller.gotarget(id="Station5", x=1.0, y=2.0, z=0.0)
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['gotarget']
+        req_id, resp_id, desc = TASK_COMMANDS['gotarget']
         
         # Build payload starting with extra_params
         payload = dict(extra_params)
@@ -198,7 +198,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.gotargetlist(targets=[...])
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['gotargetlist']
+        req_id, resp_id, desc = TASK_COMMANDS['gotargetlist']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -238,7 +238,7 @@ class SeerNavigationController(SeerControllerBase):
             # Move left (with both vx and vy)
             result = controller.translate(dist=1.0, vx=0.3, vy=0.3)
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['translate']
+        req_id, resp_id, desc = TASK_COMMANDS['translate']
         
         # Build payload with required parameter
         payload = {
@@ -278,7 +278,7 @@ class SeerNavigationController(SeerControllerBase):
             # Rotate 90 degrees counterclockwise at 0.5 rad/s
             result = controller.turn(angle=1.57, vw=0.5, mode=0)
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['turn']
+        req_id, resp_id, desc = TASK_COMMANDS['turn']
         
         payload = {
             'angle': abs(angle),  # Protocol requires absolute value
@@ -330,7 +330,7 @@ class SeerNavigationController(SeerControllerBase):
             # Center on right side (negative radius)
             result = controller.circular(rot_radius=-1.0, rot_degree=45, rot_speed=0.3)
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['circular']
+        req_id, resp_id, desc = TASK_COMMANDS['circular']
         
         # Build payload with mode
         payload = {
@@ -369,7 +369,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.path(path_id="route1", enable=True)
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['path']
+        req_id, resp_id, desc = TASK_COMMANDS['path']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -424,7 +424,7 @@ class SeerNavigationController(SeerControllerBase):
             # Decrease angle by 30 degrees (clockwise)
             result = controller.spin(increase_spin_angle=-30)
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['spin']
+        req_id, resp_id, desc = TASK_COMMANDS['spin']
         
         # Build payload with optional parameters
         payload = {}
@@ -456,7 +456,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.pause()
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['pause']
+        req_id, resp_id, desc = TASK_COMMANDS['pause']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -475,7 +475,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.resume()
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['resume']
+        req_id, resp_id, desc = TASK_COMMANDS['resume']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -494,7 +494,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.cancel()
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['cancel']
+        req_id, resp_id, desc = TASK_COMMANDS['cancel']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -518,7 +518,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.tasklist_status()
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['tasklist_status']
+        req_id, resp_id, desc = TASK_COMMANDS['tasklist_status']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -540,7 +540,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.tasklist_list()
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['tasklist_list']
+        req_id, resp_id, desc = TASK_COMMANDS['tasklist_list']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -565,7 +565,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.tasklist_name(name="delivery_task")
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['tasklist_name']
+        req_id, resp_id, desc = TASK_COMMANDS['tasklist_name']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -590,7 +590,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.target_path(start_x=0, start_y=0, end_x=1, end_y=1)
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['target_path']
+        req_id, resp_id, desc = TASK_COMMANDS['target_path']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -614,7 +614,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.cleartargetlist(path_id=123)
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['cleartargetlist']
+        req_id, resp_id, desc = TASK_COMMANDS['cleartargetlist']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -638,7 +638,7 @@ class SeerNavigationController(SeerControllerBase):
         Example:
             result = controller.safeclearmovements(task_id=456)
         """
-        req_id, resp_id, desc = NAVIGATION_COMMANDS['safeclearmovements']
+        req_id, resp_id, desc = TASK_COMMANDS['safeclearmovements']
         return self.send_command(
             req_id=1,
             msg_type=req_id,
@@ -650,12 +650,12 @@ class SeerNavigationController(SeerControllerBase):
     @staticmethod
     def get_available_commands() -> List[str]:
         """
-        Get list of all available navigation commands.
+        Get list of all available task commands.
         
         Returns:
             List of command name strings
         """
-        return list(NAVIGATION_COMMANDS.keys())
+        return list(TASK_COMMANDS.keys())
     
     @staticmethod
     def get_command_info(command: str) -> Optional[Dict[str, Any]]:
@@ -672,10 +672,10 @@ class SeerNavigationController(SeerControllerBase):
             - description: Human-readable description
             Returns None if command not found
         """
-        if command not in NAVIGATION_COMMANDS:
+        if command not in TASK_COMMANDS:
             return None
         
-        req_id, resp_id, desc = NAVIGATION_COMMANDS[command]
+        req_id, resp_id, desc = TASK_COMMANDS[command]
         return {
             'request_id': req_id,
             'response_id': resp_id,
@@ -685,7 +685,7 @@ class SeerNavigationController(SeerControllerBase):
     def __repr__(self) -> str:
         """String representation of the controller."""
         status = "connected" if self.connected else "disconnected"
-        return (f"SeerNavigationController(robot_ip='{self.robot_ip}', "
+        return (f"SeerTaskController(robot_ip='{self.robot_ip}', "
                 f"robot_port={self.robot_port}, status='{status}')")
 
 
@@ -806,7 +806,7 @@ def parse_command_line(line: str) -> tuple[str, Dict[str, Any]]:
 
 def main():
     """
-    Interactive command-line interface for testing navigation commands.
+    Interactive command-line interface for testing task commands.
     
     Allows entering commands like:
         turn angle=3.14 vw=1
@@ -814,11 +814,11 @@ def main():
         pause
         exit
     """
-    print("🤖 SEER Navigation Controller - Interactive Mode")
+    print("🤖 SEER Task Controller - Interactive Mode")
     print("=" * 60)
     
     # Create controller
-    controller = SeerNavigationController(robot_ip='192.168.1.123', robot_port=19206)
+    controller = SeerTaskController(robot_ip='192.168.1.123', robot_port=19206)
     print(f"Controller: {controller}")
     
     # Show available commands
