@@ -21,7 +21,7 @@ import json
 import time
 import struct
 import sys
-from util import packMasg
+from seer_controller_base import packMasg
 
 # Protocol constants
 REQUEST_ID = 1004  # 0x03EC - robot_status_loc_req

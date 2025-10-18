@@ -17,7 +17,7 @@ import struct
 import sys
 import argparse
 from typing import Optional, Dict, Any
-from util import packMasg
+from seer_controller_base import packMasg
 
 # Motion control commands
 REQUEST_MOTION = 2010      # 0x07DA - robot_control_motion_req

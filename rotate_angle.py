@@ -29,7 +29,7 @@ import json
 import sys
 import time
 from typing import Dict, Any, Optional
-from util import packMasg
+from seer_controller_base import packMasg
 
 # Protocol constants
 REQUEST_TURN = 3056   # 0x0BF0

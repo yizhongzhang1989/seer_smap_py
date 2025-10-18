@@ -31,7 +31,7 @@ import json
 import sys
 import time
 from typing import Dict, Any, Optional
-from util import packMasg
+from seer_controller_base import packMasg
 
 # Protocol constants
 REQUEST_NAVIGATION = 3051   # navigation_req

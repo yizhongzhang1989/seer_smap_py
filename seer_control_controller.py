@@ -346,58 +346,6 @@ class SeerControlController(SeerControllerBase):
         }
 
 
-def parse_command_line(line: str) -> tuple[str, Dict[str, Any]]:
-    """
-    Parse command line input into function name and parameters.
-    
-    Args:
-        line: Command line string like "stop" or "reloc x=0.0 y=0.0 angle=0.0"
-        
-    Returns:
-        Tuple of (function_name, parameters_dict)
-        
-    Examples:
-        >>> parse_command_line("stop")
-        ('stop', {})
-        
-        >>> parse_command_line("reloc x=0.0 y=0.0 angle=0.0")
-        ('reloc', {'x': 0.0, 'y': 0.0, 'angle': 0.0})
-    """
-    parts = line.strip().split()
-    if not parts:
-        return None, {}
-    
-    func_name = parts[0]
-    params = {}
-    
-    for param in parts[1:]:
-        if '=' not in param:
-            continue
-        
-        key, value = param.split('=', 1)
-        key = key.strip()
-        value = value.strip()
-        
-        # Try to convert to appropriate type
-        try:
-            # Check for boolean values
-            if value.lower() == 'true':
-                params[key] = True
-            elif value.lower() == 'false':
-                params[key] = False
-            # Try integer first
-            elif '.' not in value:
-                params[key] = int(value)
-            else:
-                # Try float
-                params[key] = float(value)
-        except ValueError:
-            # Keep as string
-            params[key] = value
-    
-    return func_name, params
-
-
 def main():
     """
     Interactive command-line interface for testing control commands.
@@ -408,6 +356,8 @@ def main():
         loadmap map_name=factory_floor1
         exit
     """
+    from util import parse_command_line
+    
     print("🤖 SEER Control Controller - Interactive Mode")
     print("=" * 60)
     

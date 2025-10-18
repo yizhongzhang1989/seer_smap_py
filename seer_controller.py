@@ -20,7 +20,7 @@ import threading
 import queue
 from datetime import datetime
 from typing import Optional, Dict, Any
-from util import packMasg
+from seer_controller_base import packMasg
 
 # Command IDs
 REQUEST_POSITION = 1004     # 0x03EC - robot_status_loc_req
