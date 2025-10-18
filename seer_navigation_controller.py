@@ -84,27 +84,100 @@ class SeerNavigationController(SeerControllerBase):
         """
         super().__init__(robot_ip, robot_port)
     
-    def gotarget(self, **params) -> Optional[Dict[str, Any]]:
+    def gotarget(self, 
+                 id: Optional[str] = None,
+                 source_id: Optional[str] = None,
+                 task_id: Optional[str] = None,
+                 angle: Optional[float] = None,
+                 spin: Optional[bool] = None,
+                 operation: Optional[str] = None,
+                 jack_height: Optional[float] = None,
+                 **extra_params) -> Optional[Dict[str, Any]]:
         """
         Path navigation - Navigate robot to target position.
         
+        Manual: https://seer-group.feishu.cn/wiki/Q26SwaNoGisuLWk2vCxcPfVWn2e
+        
+        This function supports many parameters. Frequently used parameters are explicitly
+        defined, and additional parameters can be passed via **extra_params or as a dict.
+        
         Args:
-            **params: Navigation parameters (to be specified)
-                - Target position coordinates
-                - Navigation options
-                - etc.
+            id: Target station name. Use "SELF_POSITION" when executing operation in place
+                - Optional parameter
+            source_id: Starting station name. Use "SELF_POSITION" when starting from 
+                       current robot position (not at a station)
+                - Optional parameter
+            task_id: Task number/identifier
+                - Optional parameter
+            angle: Target angle in world coordinate system, unit: radians
+                - Optional parameter
+            spin: Whether to enable follow-up rotation
+                - Optional parameter
+            operation: Control jack device action, supported actions:
+                - "JackLoad": Jack up to load cargo (sets robot to loaded state)
+                - "JackUnload": Jack down to unload cargo (sets robot to unloaded state)
+                - "JackHeight": Jack to height
+                - "Wait": No action (default)
+                - Optional parameter, defaults to "Wait"
+            jack_height: Jack height value. When JackLoad or JackUnload is used,
+                        this value is used as the target jack height
+                - Optional parameter
+            **extra_params: Additional navigation parameters as key-value pairs.
+                           These will be merged with explicitly defined parameters.
         
         Returns:
             Response dictionary if successful, None if failed
             
-        Example:
-            result = controller.gotarget(x=1.0, y=2.0, angle=0.0)
+        Examples:
+            # Navigate to a named station
+            result = controller.gotarget(id="Station1", angle=0.0)
+            
+            # Navigate from current position to target
+            result = controller.gotarget(id="Station2", source_id="SELF_POSITION", spin=True)
+            
+            # Execute action at current position
+            result = controller.gotarget(id="SELF_POSITION")
+            
+            # Navigate with task ID
+            result = controller.gotarget(id="Station3", task_id="TASK_001", angle=1.57)
+            
+            # Jack up to load cargo at station
+            result = controller.gotarget(id="LoadStation", operation="JackLoad", jack_height=0.5)
+            
+            # Jack down to unload cargo
+            result = controller.gotarget(id="UnloadStation", operation="JackUnload", jack_height=0.0)
+            
+            # Jack to specific height
+            result = controller.gotarget(id="Station4", operation="JackHeight", jack_height=0.3)
+            
+            # Using extra parameters
+            result = controller.gotarget(id="Station5", x=1.0, y=2.0, z=0.0)
         """
         req_id, resp_id, desc = NAVIGATION_COMMANDS['gotarget']
+        
+        # Build payload starting with extra_params
+        payload = dict(extra_params)
+        
+        # Add explicitly defined parameters if provided (they override extra_params)
+        if id is not None:
+            payload['id'] = id
+        if source_id is not None:
+            payload['source_id'] = source_id
+        if task_id is not None:
+            payload['task_id'] = task_id
+        if angle is not None:
+            payload['angle'] = angle
+        if spin is not None:
+            payload['spin'] = spin
+        if operation is not None:
+            payload['operation'] = operation
+        if jack_height is not None:
+            payload['jack_height'] = jack_height
+        
         return self.send_command(
             req_id=1,
             msg_type=req_id,
-            msg=params,
+            msg=payload,
             expected_response=resp_id,
             timeout=10.0
         )
@@ -622,14 +695,20 @@ def parse_command_line(line: str) -> tuple[str, Dict[str, Any]]:
     
     Args:
         line: Command line string like "turn angle=3.14 vw=1"
+              For extra_params, use JSON: "gotarget id=Station1 extra_params={'x':1.0,'y':2.0}"
         
     Returns:
         Tuple of (function_name, parameters_dict)
         
-    Example:
+    Examples:
         >>> parse_command_line("turn angle=3.14 vw=1")
         ('turn', {'angle': 3.14, 'vw': 1.0})
+        
+        >>> parse_command_line("gotarget id=Station1 extra_params={'x':1.0,'y':2.0}")
+        ('gotarget', {'id': 'Station1', 'x': 1.0, 'y': 2.0})
     """
+    import json
+    
     parts = line.strip().split()
     if not parts:
         return None, {}
@@ -637,25 +716,90 @@ def parse_command_line(line: str) -> tuple[str, Dict[str, Any]]:
     func_name = parts[0]
     params = {}
     
-    for param in parts[1:]:
+    i = 1
+    while i < len(parts):
+        param = parts[i]
+        
         if '=' not in param:
+            i += 1
             continue
         
         key, value = param.split('=', 1)
         key = key.strip()
         value = value.strip()
         
-        # Try to convert to appropriate type
-        try:
-            # Try integer first
-            if '.' not in value:
-                params[key] = int(value)
-            else:
-                # Try float
-                params[key] = float(value)
-        except ValueError:
-            # Keep as string
-            params[key] = value
+        # Special handling for extra_params - expect JSON dict
+        if key == 'extra_params':
+            # Collect the rest of the line for JSON parsing
+            # This handles JSON that may contain spaces
+            json_start = line.find('extra_params=') + len('extra_params=')
+            json_str = line[json_start:].strip()
+            
+            # Try to find where the JSON ends (either end of line or next param)
+            # Look for closing brace
+            brace_count = 0
+            json_end = 0
+            in_string = False
+            escape_next = False
+            
+            for idx, char in enumerate(json_str):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\':
+                    escape_next = True
+                    continue
+                if char == '"' or char == "'":
+                    in_string = not in_string
+                if not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            json_end = idx + 1
+                            break
+            
+            if json_end > 0:
+                json_str = json_str[:json_end]
+            
+            try:
+                # Replace single quotes with double quotes for valid JSON
+                json_str = json_str.replace("'", '"')
+                extra_dict = json.loads(json_str)
+                
+                # Merge extra_params into params
+                if isinstance(extra_dict, dict):
+                    params.update(extra_dict)
+                else:
+                    print(f"⚠️  Warning: extra_params is not a dict: {extra_dict}")
+                    
+            except json.JSONDecodeError as e:
+                print(f"❌ Error parsing extra_params JSON: {e}")
+                print(f"   JSON string: {json_str}")
+                params['extra_params'] = value  # Keep as string on error
+            
+            # Skip to end since we've consumed the rest
+            break
+        else:
+            # Try to convert to appropriate type
+            try:
+                # Check for boolean values
+                if value.lower() == 'true':
+                    params[key] = True
+                elif value.lower() == 'false':
+                    params[key] = False
+                # Try integer first
+                elif '.' not in value:
+                    params[key] = int(value)
+                else:
+                    # Try float
+                    params[key] = float(value)
+            except ValueError:
+                # Keep as string
+                params[key] = value
+        
+        i += 1
     
     return func_name, params
 
