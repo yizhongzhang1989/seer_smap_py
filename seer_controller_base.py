@@ -12,6 +12,8 @@ Features:
 - Error handling and timeout management
 - Thread-safe operations
 
+Manual: https://seer-group.feishu.cn/wiki/WsI2wM46YiESh8k12EBclv23nOf?table=tblObW6PmjUPTyTn&view=vewiqqgyEX
+
 Author: Assistant
 Date: October 18, 2025
 """

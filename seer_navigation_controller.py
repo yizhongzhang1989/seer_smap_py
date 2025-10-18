@@ -18,6 +18,8 @@ Control commands:
 - Path: path (enable/disable), cleartargetlist, safeclearmovements
 - Task: tasklist_status, tasklist_list, tasklist_name, target_path
 
+Manual: https://seer-group.feishu.cn/wiki/WsI2wM46YiESh8k12EBclv23nOf?table=tblObW6PmjUPTyTn&view=vewiqqgyEX
+
 Author: Assistant
 Date: October 18, 2025
 """
@@ -132,28 +134,55 @@ class SeerNavigationController(SeerControllerBase):
             timeout=10.0
         )
     
-    def translate(self, **params) -> Optional[Dict[str, Any]]:
+    def translate(self, dist: float, vx: Optional[float] = None, 
+                  vy: Optional[float] = None, mode: int = 0) -> Optional[Dict[str, Any]]:
         """
-        Translation - Move robot in specified direction.
+        Translation - Move robot in straight line.
+        
+        Manual: https://seer-group.feishu.cn/wiki/NhfPwV2L2ij5iXkrsmBcZQR1n0e
         
         Args:
-            **params: Translation parameters (to be specified)
-                - Distance
-                - Direction
-                - Velocity
-                - etc.
+            dist: Linear motion distance (absolute value) in meters
+            vx: Velocity in X direction in robot coordinate system (m/s)
+                - Positive: forward, Negative: backward
+                - Optional, can be omitted
+            vy: Velocity in Y direction in robot coordinate system (m/s)
+                - Positive: left, Negative: right
+                - Optional, can be omitted
+            mode: 0=odometry mode (motion based on odometry), 1=localization mode
+                  Default: 0 (odometry mode)
         
         Returns:
             Response dictionary if successful, None if failed
             
         Example:
-            result = controller.translate(distance=1.0, direction=0.0)
+            # Move forward 1 meter
+            result = controller.translate(dist=1.0, vx=0.5)
+            
+            # Move backward 0.5 meters
+            result = controller.translate(dist=0.5, vx=-0.3)
+            
+            # Move left (with both vx and vy)
+            result = controller.translate(dist=1.0, vx=0.3, vy=0.3)
         """
         req_id, resp_id, desc = NAVIGATION_COMMANDS['translate']
+        
+        # Build payload with required parameter
+        payload = {
+            'dist': abs(dist),  # Absolute value
+            'mode': mode
+        }
+        
+        # Add optional parameters if provided
+        if vx is not None:
+            payload['vx'] = vx
+        if vy is not None:
+            payload['vy'] = vy
+        
         return self.send_command(
             req_id=1,
             msg_type=req_id,
-            msg=params,
+            msg=payload,
             expected_response=resp_id,
             timeout=10.0
         )
@@ -161,6 +190,8 @@ class SeerNavigationController(SeerControllerBase):
     def turn(self, angle: float, vw: float, mode: int = 0) -> Optional[Dict[str, Any]]:
         """
         Rotation - Rotate robot by specified angle.
+        
+        Manual: https://seer-group.feishu.cn/wiki/GuERwubRriOJzskwWGecYCtpn5f
         
         Args:
             angle: Rotation angle in radians (absolute value)
@@ -190,28 +221,61 @@ class SeerNavigationController(SeerControllerBase):
             timeout=10.0
         )
     
-    def circular(self, **params) -> Optional[Dict[str, Any]]:
+    def circular(self, rot_radius: Optional[float] = None, 
+                 rot_degree: Optional[float] = None,
+                 rot_speed: Optional[float] = None, 
+                 mode: int = 0) -> Optional[Dict[str, Any]]:
         """
         Circular motion - Move robot in circular arc.
         
+        Manual: https://seer-group.feishu.cn/wiki/GuERwubRriOJzskwWGecYCtpn5f
+        
         Args:
-            **params: Circular motion parameters (to be specified)
-                - Radius
-                - Arc angle
-                - Velocity
-                - etc.
+            rot_radius: Rotation radius in meters
+                - Positive: center on robot's left side
+                - Negative: center on robot's right side
+                - Optional parameter
+            rot_degree: Rotation angle in degrees
+                - Optional parameter
+            rot_speed: Rotation speed in rad/s
+                - Positive: counterclockwise
+                - Negative: clockwise
+                - Optional parameter
+            mode: 0=odometry mode (motion based on odometry), 1=localization mode
+                  Default: 0 (odometry mode)
         
         Returns:
             Response dictionary if successful, None if failed
             
         Example:
-            result = controller.circular(radius=1.0, angle=1.57)
+            # Arc with 1m radius, 90 degrees, 0.5 rad/s
+            result = controller.circular(rot_radius=1.0, rot_degree=90, rot_speed=0.5)
+            
+            # Clockwise arc (negative speed)
+            result = controller.circular(rot_radius=0.5, rot_degree=180, rot_speed=-0.5)
+            
+            # Center on right side (negative radius)
+            result = controller.circular(rot_radius=-1.0, rot_degree=45, rot_speed=0.3)
         """
         req_id, resp_id, desc = NAVIGATION_COMMANDS['circular']
+        
+        # Build payload with mode
+        payload = {
+            'mode': mode
+        }
+        
+        # Add optional parameters if provided
+        if rot_radius is not None:
+            payload['rot_radius'] = rot_radius
+        if rot_degree is not None:
+            payload['rot_degree'] = rot_degree
+        if rot_speed is not None:
+            payload['rot_speed'] = rot_speed
+        
         return self.send_command(
             req_id=1,
             msg_type=req_id,
-            msg=params,
+            msg=payload,
             expected_response=resp_id,
             timeout=10.0
         )
@@ -241,27 +305,70 @@ class SeerNavigationController(SeerControllerBase):
             timeout=10.0
         )
     
-    def spin(self, **params) -> Optional[Dict[str, Any]]:
+    def spin(self, increase_spin_angle: Optional[float] = None,
+             robot_spin_angle: Optional[float] = None,
+             global_spin_angle: Optional[float] = None,
+             spin_direction: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """
         Pallet rotation - Rotate pallet or payload.
         
+        Manual: https://seer-group.feishu.cn/wiki/HIanw4DZsirojfkIvPdcx4k3nTh
+        
         Args:
-            **params: Spin parameters (to be specified)
-                - Rotation angle
-                - Speed
-                - etc.
+            increase_spin_angle: Increase angle from current pallet angle
+                - Positive: counterclockwise rotation
+                - Negative: clockwise rotation
+                - Optional parameter
+            robot_spin_angle: Rotate pallet to an angle in robot coordinate system
+                - spin_direction=0: nearest direction
+                - spin_direction=1: counterclockwise
+                - spin_direction=-1: clockwise
+                - Optional parameter
+            global_spin_angle: Rotate pallet to an angle in world coordinate system
+                - spin_direction=0: nearest direction
+                - spin_direction=1: counterclockwise
+                - spin_direction=-1: clockwise
+                - Optional parameter
+            spin_direction: Direction control
+                - 0: nearest direction
+                - 1: counterclockwise
+                - -1: clockwise
+                - Optional parameter (used with robot_spin_angle or global_spin_angle)
         
         Returns:
             Response dictionary if successful, None if failed
             
         Example:
-            result = controller.spin(angle=3.14, speed=0.5)
+            # Increase current angle by 45 degrees counterclockwise
+            result = controller.spin(increase_spin_angle=45)
+            
+            # Rotate to 90 degrees in robot coordinate (nearest direction)
+            result = controller.spin(robot_spin_angle=90, spin_direction=0)
+            
+            # Rotate to 180 degrees in world coordinate (counterclockwise)
+            result = controller.spin(global_spin_angle=180, spin_direction=1)
+            
+            # Decrease angle by 30 degrees (clockwise)
+            result = controller.spin(increase_spin_angle=-30)
         """
         req_id, resp_id, desc = NAVIGATION_COMMANDS['spin']
+        
+        # Build payload with optional parameters
+        payload = {}
+        
+        if increase_spin_angle is not None:
+            payload['increase_spin_angle'] = increase_spin_angle
+        if robot_spin_angle is not None:
+            payload['robot_spin_angle'] = robot_spin_angle
+        if global_spin_angle is not None:
+            payload['global_spin_angle'] = global_spin_angle
+        if spin_direction is not None:
+            payload['spin_direction'] = spin_direction
+        
         return self.send_command(
             req_id=1,
             msg_type=req_id,
-            msg=params,
+            msg=payload,
             expected_response=resp_id,
             timeout=10.0
         )
@@ -509,13 +616,61 @@ class SeerNavigationController(SeerControllerBase):
                 f"robot_port={self.robot_port}, status='{status}')")
 
 
+def parse_command_line(line: str) -> tuple[str, Dict[str, Any]]:
+    """
+    Parse command line input into function name and parameters.
+    
+    Args:
+        line: Command line string like "turn angle=3.14 vw=1"
+        
+    Returns:
+        Tuple of (function_name, parameters_dict)
+        
+    Example:
+        >>> parse_command_line("turn angle=3.14 vw=1")
+        ('turn', {'angle': 3.14, 'vw': 1.0})
+    """
+    parts = line.strip().split()
+    if not parts:
+        return None, {}
+    
+    func_name = parts[0]
+    params = {}
+    
+    for param in parts[1:]:
+        if '=' not in param:
+            continue
+        
+        key, value = param.split('=', 1)
+        key = key.strip()
+        value = value.strip()
+        
+        # Try to convert to appropriate type
+        try:
+            # Try integer first
+            if '.' not in value:
+                params[key] = int(value)
+            else:
+                # Try float
+                params[key] = float(value)
+        except ValueError:
+            # Keep as string
+            params[key] = value
+    
+    return func_name, params
+
+
 def main():
     """
-    Example usage of SeerNavigationController.
+    Interactive command-line interface for testing navigation commands.
     
-    Demonstrates navigation control commands.
+    Allows entering commands like:
+        turn angle=3.14 vw=1
+        translate dist=0.5 vx=0.5 vy=0.5
+        pause
+        exit
     """
-    print("🤖 SEER Navigation Controller - Example Usage")
+    print("🤖 SEER Navigation Controller - Interactive Mode")
     print("=" * 60)
     
     # Create controller
@@ -537,53 +692,103 @@ def main():
     
     print("✅ Connected successfully!")
     
-    # Example 1: Simple control commands
-    print("\n📝 Example 1: Basic control commands")
-    
-    # Pause (empty payload)
-    print("\n  Pausing navigation...")
-    result = controller.pause()
-    if result:
-        print(f"  ✅ Pause result: {result}")
-    else:
-        print("  ❌ Pause failed")
-    
-    # Resume (empty payload)
-    print("\n  Resuming navigation...")
-    result = controller.resume()
-    if result:
-        print(f"  ✅ Resume result: {result}")
-    else:
-        print("  ❌ Resume failed")
-    
-    # Example 2: Rotation command (with known parameters)
-    print("\n📝 Example 2: Rotation test sequence")
-    
-    print("  Test 1: Rotating 180 degrees (3.14 rad) counterclockwise at 1 rad/s...")
-    result = controller.turn(angle=3.14, vw=1, mode=0)
-    if result:
-        print(f"  ✅ Turn result: {result}")
-    else:
-        print("  ❌ Turn failed")
-    
-    print("\n  ⏱️  Waiting 5 seconds...")
-    time.sleep(5)
-    
-    print("\n  Test 2: Rotating 180 degrees (3.14 rad) clockwise at 1 rad/s...")
-    result = controller.turn(angle=3.14, vw=-1, mode=0)
-    if result:
-        print(f"  ✅ Turn result: {result}")
-    else:
-        print("  ❌ Turn failed")
-    
-    # Disconnect
-    controller.disconnect()
-    print("\n🔌 Disconnected")
-    
+    # Interactive command loop
     print("\n" + "=" * 60)
-    print("✅ Examples completed!")
-    print("\nNote: Most commands need specific parameters to be provided.")
-    print("Use controller.command_name(**params) with appropriate parameters.")
+    print("📝 Interactive Command Mode")
+    print("=" * 60)
+    print("\nEnter commands in the format:")
+    print("  <function_name> <param1>=<value1> <param2>=<value2> ...")
+    print("\nExamples:")
+    print("  turn angle=3.14 vw=1")
+    print("  translate dist=0.5 vx=0.5 vy=0.5")
+    print("  turn angle=1.57 vw=-0.5 mode=1")
+    print("  pause")
+    print("  resume")
+    print("  cancel")
+    print("\nType 'exit' or 'quit' to disconnect and exit.")
+    print("Type 'help' to show available commands.")
+    print("-" * 60)
+    
+    try:
+        while True:
+            # Get user input
+            try:
+                line = input("\n🤖 > ").strip()
+            except EOFError:
+                print("\n")
+                break
+            
+            if not line:
+                continue
+            
+            # Check for exit commands
+            if line.lower() in ['exit', 'quit', 'q']:
+                print("👋 Exiting...")
+                break
+            
+            # Check for help command
+            if line.lower() == 'help':
+                print("\nAvailable commands:")
+                for cmd in commands:
+                    info = controller.get_command_info(cmd)
+                    print(f"  - {cmd:20s} : {info['description']}")
+                continue
+            
+            # Parse command line
+            func_name, params = parse_command_line(line)
+            
+            if not func_name:
+                print("❌ Invalid command format")
+                continue
+            
+            # Check if function exists
+            if not hasattr(controller, func_name):
+                print(f"❌ Unknown command: {func_name}")
+                print(f"   Type 'help' to see available commands")
+                continue
+            
+            # Get the function
+            func = getattr(controller, func_name)
+            
+            # Call the function with error handling
+            try:
+                print(f"� Calling {func_name}({', '.join(f'{k}={v}' for k, v in params.items())})")
+                result = func(**params)
+                
+                if result is not None:
+                    # Check return code
+                    ret_code = result.get('ret_code', -1)
+                    if ret_code == 0:
+                        print(f"✅ Command succeeded!")
+                        # Show result data
+                        if len(result) > 1:  # More than just ret_code
+                            print(f"   Response: {result}")
+                    else:
+                        error_msg = result.get('err_msg', 'Unknown error')
+                        print(f"❌ Command failed with code {ret_code}: {error_msg}")
+                        if len(result) > 2:  # More details
+                            print(f"   Full response: {result}")
+                else:
+                    print(f"❌ Command failed - no response received")
+                    
+            except TypeError as e:
+                print(f"❌ Invalid parameters: {e}")
+                print(f"   Usage: Check function signature or documentation")
+            except Exception as e:
+                print(f"❌ Error executing command: {e}")
+                import traceback
+                traceback.print_exc()
+    
+    except KeyboardInterrupt:
+        print("\n\n🛑 Interrupted by user")
+    
+    finally:
+        # Disconnect
+        controller.disconnect()
+        print("\n🔌 Disconnected")
+        print("\n" + "=" * 60)
+        print("✅ Session ended!")
+        print("=" * 60)
 
 
 if __name__ == "__main__":

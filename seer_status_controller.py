@@ -21,6 +21,8 @@ Supported query types include:
 - Advanced: arm_status, arm_move, arm_task
 - And many more...
 
+Manual: https://seer-group.feishu.cn/wiki/WsI2wM46YiESh8k12EBclv23nOf?table=tblObW6PmjUPTyTn&view=vewiqqgyEX
+
 Author: Assistant
 Date: October 18, 2025
 """
