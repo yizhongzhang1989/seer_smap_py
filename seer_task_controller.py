@@ -172,27 +172,54 @@ class SeerTaskController(SeerControllerBase):
             timeout=10.0
         )
     
-    def gotargetlist(self, **params) -> Optional[Dict[str, Any]]:
+    def gotargetlist(self, move_task_list: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
         Specified path navigation - Navigate through multiple targets.
         
         Args:
-            **params: Navigation parameters (to be specified)
-                - List of target positions
-                - Navigation options
-                - etc.
+            move_task_list: List of movement tasks, where each task is a dictionary containing:
+                - id: Target station name (required)
+                - source_id: Starting station name (required)
+                - task_id: Task identifier (required)
+                - operation: Optional operation (e.g., "JackLoad", "JackUnload", "JackHeight")
+                - jack_height: Optional jack height in meters (used with "JackHeight" operation)
+                - Other optional parameters
         
         Returns:
             Response dictionary if successful, None if failed
             
-        Example:
-            result = controller.gotargetlist(targets=[...])
+        Examples:
+            # Simple path navigation
+            tasks = [
+                {"id": "LM2", "source_id": "LM1", "task_id": "00000001"},
+                {"id": "LM3", "source_id": "LM2", "task_id": "00000002"}
+            ]
+            result = controller.gotargetlist(tasks)
+            
+            # Path with jack operations
+            tasks = [
+                {"id": "LM2", "source_id": "LM1", "task_id": "00000001"},
+                {
+                    "id": "AP1", 
+                    "source_id": "LM2", 
+                    "task_id": "00000002",
+                    "operation": "JackHeight",
+                    "jack_height": 0.2
+                }
+            ]
+            result = controller.gotargetlist(tasks)
         """
         req_id, resp_id, desc = TASK_COMMANDS['gotargetlist']
+        
+        # Convert list to dict format expected by the robot
+        payload = {
+            'move_task_list': move_task_list
+        }
+        
         return self.send_command(
             req_id=1,
             msg_type=req_id,
-            msg=params,
+            msg=payload,
             expected_response=resp_id,
             timeout=10.0
         )
