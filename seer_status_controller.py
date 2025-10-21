@@ -27,7 +27,6 @@ Author: Assistant
 Date: October 18, 2025
 """
 
-import time
 from typing import Optional, Dict, Any, List
 from seer_controller_base import SeerControllerBase
 
@@ -186,7 +185,7 @@ class SeerStatusController(SeerControllerBase):
             'description': desc
         }
     
-    def query_status(self, query_type: str, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
+    def query_status(self, query_type: str, timeout: float = 5.0, **params) -> Optional[Dict[str, Any]]:
         """
         Query robot status for a specific type.
         
@@ -196,6 +195,7 @@ class SeerStatusController(SeerControllerBase):
         Args:
             query_type: Type of status to query ('info', 'run', 'loc', 'speed', etc.)
             timeout: Query timeout in seconds (default: 5.0)
+            **params: Optional keyword arguments to pass to the query command
             
         Returns:
             Dictionary containing the query response data if successful, None if failed
@@ -204,15 +204,34 @@ class SeerStatusController(SeerControllerBase):
             ValueError: If query_type is not supported
             
         Example:
-            # Query position
+            # Query position (no parameters)
             position = controller.query_status('loc')
             if position:
                 print(f"x={position['x']}, y={position['y']}")
             
-            # Query speed
+            # Query speed (no parameters)
             speed = controller.query_status('speed')
             if speed:
                 print(f"vx={speed['vx']}, vy={speed['vy']}")
+            
+            # Query with parameters (e.g., get_path between two points)
+            path = controller.query_status('get_path',
+                map_name='warehouse',
+                start_x=0.0,
+                start_y=0.0,
+                end_x=10.0,
+                end_y=5.0
+            )
+            
+            # Query map MD5 for specific maps
+            md5 = controller.query_status('mapmd5', 
+                map_list=['map1', 'map2', 'map3']
+            )
+            
+            # From command line parsing:
+            # "query_status loc" -> query_status('loc')
+            # "query_status get_path map_name=warehouse start_x=0.0" 
+            #   -> query_status('get_path', map_name='warehouse', start_x=0.0)
         """
         # Validate query type
         if query_type not in STATUS_QUERY_TYPES:
@@ -225,11 +244,11 @@ class SeerStatusController(SeerControllerBase):
         # Update statistics
         self.query_stats[query_type]['count'] += 1
         
-        # Send query command
+        # Send query command with params as message payload
         result = self.send_command(
             req_id=1,
             msg_type=request_id,
-            msg={},  # Empty payload for status queries
+            msg=params,
             expected_response=response_id,
             timeout=timeout
         )
@@ -276,103 +295,149 @@ class SeerStatusController(SeerControllerBase):
 
 def main():
     """
-    Example usage of SeerStatusController.
+    Interactive command-line interface for testing status queries.
     
-    Iterates through all available query types and displays received data.
+    Allows entering commands like:
+        query_status loc
+        query_status battery
+        query_status get_path map_name=warehouse start_x=0.0 end_x=10.0
+        exit
     """
-    print("🤖 SEER Status Controller - Query All Status Types")
-    print("=" * 80)
+    from util import parse_command_line
+    import json
+    
+    print("🤖 SEER Status Controller - Interactive Mode")
+    print("=" * 60)
     
     # Create controller
     controller = SeerStatusController(robot_ip='192.168.1.123', robot_port=19204)
+    print(f"Controller: {controller}")
     
-    # Get all available query types
-    all_query_types = controller.get_available_query_types()
-    print(f"\nTotal available query types: {len(all_query_types)}")
-    print(f"Query types: {', '.join(all_query_types[:10])}... (showing first 10)")
+    # Show available query types
+    query_types = controller.get_available_query_types()
+    print(f"\nAvailable query types ({len(query_types)} total):")
+    print("Common queries:")
+    common_queries = ['info', 'run', 'loc', 'speed', 'battery', 'task', 'task_status', 
+                      'alarm', 'io', 'laser', 'imu', 'map', 'station']
+    for qtype in common_queries:
+        if qtype in query_types:
+            info = controller.get_query_info(qtype)
+            print(f"  - {qtype:20s} : {info['description']}")
+    print(f"\n  ... and {len(query_types) - len(common_queries)} more")
+    print("  (Type 'list' to see all available query types)")
     
     # Connect to robot
-    print("\n� Connecting to robot...")
+    print("\n🔌 Connecting to robot...")
     if not controller.connect():
         print("❌ Failed to connect to robot")
         return
     
     print("✅ Connected successfully!")
-    print("\n" + "=" * 80)
-    print("Starting queries (200ms delay between each)...")
-    print("=" * 80)
     
-    # Iterate through all query types
-    successful_queries = 0
-    failed_queries = 0
+    # Interactive command loop
+    print("\n" + "=" * 60)
+    print("📝 Interactive Command Mode")
+    print("=" * 60)
+    print("\nEnter commands in the format:")
+    print("  <query_type> [param1=value1 param2=value2 ...]")
+    print("\nExamples:")
+    print("  loc")
+    print("  battery")
+    print("  task_status")
+    print("  get_path map_name=warehouse start_x=0.0 end_x=10.0")
+    print("  mapmd5 map_list=['map1','map2']")
+    print("\nType 'exit' or 'quit' to disconnect and exit.")
+    print("Type 'help' or 'list' to show available query types.")
+    print("-" * 60)
     
-    for i, query_type in enumerate(all_query_types, 1):
-        # Get query info
-        query_info = controller.get_query_info(query_type)
-        
-        print(f"\n[{i}/{len(all_query_types)}] Query: '{query_type}'")
-        print(f"  Request ID: {query_info['request_id']}, Response ID: {query_info['response_id']}")
-        print(f"  Description: {query_info['description']}")
-        
-        # Query the status
-        try:
-            result = controller.query_status(query_type, timeout=2.0)
+    try:
+        while True:
+            # Get user input
+            try:
+                line = input("\n🤖 > ").strip()
+            except EOFError:
+                print("\n")
+                break
             
-            if result is not None:
-                print(f"  ✅ Success - Response keys: {list(result.keys())}")
+            if not line:
+                continue
+            
+            # Check for exit commands
+            if line.lower() in ['exit', 'quit', 'q']:
+                print("👋 Exiting...")
+                break
+            
+            # Check for help/list command
+            if line.lower() in ['help', 'list']:
+                print("\nAll available query types:")
+                for i, qtype in enumerate(sorted(query_types), 1):
+                    info = controller.get_query_info(qtype)
+                    print(f"  {i:2d}. {qtype:20s} : {info['description']}")
+                continue
+            
+            # Parse command line - treat first word as query_type
+            parts = line.strip().split()
+            if not parts:
+                continue
+            
+            query_type = parts[0]
+            
+            # Check if query type is valid
+            if query_type not in query_types:
+                print(f"❌ Unknown query type: {query_type}")
+                print("   Type 'list' to see all available query types")
+                continue
+            
+            # Parse parameters from remaining parts
+            _, params = parse_command_line(line)
+            
+            # Get query info
+            query_info = controller.get_query_info(query_type)
+            
+            # Call the function with error handling
+            try:
+                param_str = ', '.join(f'{k}={v}' for k, v in params.items()) if params else ''
+                print(f"⚙️  Querying '{query_type}' ({query_info['description']})")
+                if param_str:
+                    print(f"   Parameters: {param_str}")
                 
-                # Print first few key-value pairs for interesting data
-                sample_keys = list(result.keys())[:5]  # Show first 5 keys
-                if sample_keys:
-                    print(f"  Sample data:")
-                    for key in sample_keys:
-                        value = result[key]
-                        # Truncate long values
-                        if isinstance(value, (list, dict)) and len(str(value)) > 100:
-                            print(f"    {key}: {type(value).__name__} (length: {len(value)})")
-                        else:
-                            value_str = str(value)
-                            if len(value_str) > 80:
-                                value_str = value_str[:77] + "..."
-                            print(f"    {key}: {value_str}")
+                result = controller.query_status(query_type, **params)
                 
-                successful_queries += 1
-            else:
-                print("  ❌ Failed - No response or timeout")
-                failed_queries += 1
-                
-        except ValueError as e:
-            print(f"  ❌ Error: {e}")
-            failed_queries += 1
-        except Exception as e:
-            print(f"  ❌ Unexpected error: {e}")
-            failed_queries += 1
-        
-        # Sleep 200ms between queries
-        time.sleep(0.2)
+                if result is not None:
+                    # Print full JSON response
+                    print("\n📥 Response:")
+                    print(json.dumps(result, indent=2, ensure_ascii=False))
+                    
+                    # Check return code
+                    ret_code = result.get('ret_code', -1)
+                    if ret_code == 0:
+                        print("\n✅ Query succeeded!")
+                    else:
+                        error_msg = result.get('err_msg', 'Unknown error')
+                        print(f"\n❌ Query failed with code {ret_code}: {error_msg}")
+                else:
+                    print("❌ Query failed - no response received")
+                    
+            except ValueError as e:
+                print(f"❌ Invalid query type: {e}")
+            except TypeError as e:
+                print(f"❌ Invalid parameters: {e}")
+                print(f"   Usage: Check function signature or documentation")
+            except Exception as e:
+                print(f"❌ Error executing query: {e}")
+                import traceback
+                traceback.print_exc()
     
-    # Disconnect
-    controller.disconnect()
+    except KeyboardInterrupt:
+        print("\n\n🛑 Interrupted by user")
     
-    # Print summary
-    print("\n" + "=" * 80)
-    print("� Query Summary")
-    print("=" * 80)
-    print(f"Total queries: {len(all_query_types)}")
-    print(f"Successful: {successful_queries} ({successful_queries/len(all_query_types)*100:.1f}%)")
-    print(f"Failed: {failed_queries} ({failed_queries/len(all_query_types)*100:.1f}%)")
-    
-    # Print detailed statistics
-    print("\n� Detailed Statistics:")
-    stats = controller.get_query_stats()
-    for query_type, qstats in sorted(stats.items()):
-        if qstats['count'] > 0:
-            status_icon = "✅" if qstats['success'] > 0 else "❌"
-            print(f"  {status_icon} {query_type:20s} - {qstats['success']}/{qstats['count']} "
-                  f"({qstats['success_rate']:.0f}% success)")
-    
-    print("\n" + "=" * 80)
-    print("✅ All queries completed!")
+    finally:
+        # Disconnect
+        controller.disconnect()
+        print("\n🔌 Disconnected")
+        print("\n" + "=" * 60)
+        print("✅ Session ended!")
+        print("=" * 60)
 
 
 if __name__ == "__main__":

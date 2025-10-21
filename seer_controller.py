@@ -1,389 +1,338 @@
 #!/usr/bin/env python3
 """
-SEER Robot Controller
-A comprehensive controller for SEER robots with position monitoring and control capabilities.
+SEER Unified Robot Controller
 
-Features:
-- Continuous position monitoring (1Hz)
-- Robot control commands
-- Connection management
-- Real-time status display
-- Thread-safe operations
+A unified connection manager that provides access to all SEER robot controllers:
+- Status queries (65+ commands on port 19204)
+- Task/Motion control (16 commands on port 19206)
+- Control operations (9 commands on port 19205)
+- Configuration (38 commands on port 19207)
+- Other operations (55 commands on port 19210)
+- Push data monitoring (port 19301)
+
+This controller manages connections to all services and provides direct access
+to specialized controllers through public properties.
+
+Usage:
+    # Create controller and connect
+    controller = SeerController(robot_ip='192.168.1.123')
+    controller.connect_all()  # or connect_essential()
+    
+    # Access specialized controllers directly
+    position = controller.status.query_status('loc')
+    controller.task.gotarget(id="Station1")
+    controller.control.start()
+    controller.config.set_max_speed(v=1.5)
+    controller.other.jack_load()
+    
+    # Disconnect when done
+    controller.disconnect_all()
+
+Author: Assistant
+Date: October 21, 2025
 """
 
-import socket
-import json
-import time
-import struct
-import sys
-import threading
-import queue
-from datetime import datetime
-from typing import Optional, Dict, Any
-from seer_controller_base import packMasg
+from typing import Dict, Any
+from seer_status_controller import SeerStatusController
+from seer_task_controller import SeerTaskController
+from seer_control_controller import SeerControlController
+from seer_config_controller import SeerConfigController
+from seer_other_controller import SeerOtherController
+from seer_push_controller import SeerPushController
 
-# Command IDs
-REQUEST_POSITION = 1004     # 0x03EC - robot_status_loc_req
-RESPONSE_POSITION = 11004   # 0x2AFC - robot_status_loc_res
 
 class SeerController:
-    def __init__(self, robot_ip='192.168.192.5'):
+    """
+    Unified SEER Robot Controller - Connection Manager.
+    
+    Manages connections to all specialized controllers and provides direct access.
+    Each specialized controller operates on its designated port:
+    - status: 19204 - SeerStatusController (query_status, get_stats, etc.)
+    - task: 19206 - SeerTaskController (gotarget, translate, turn, etc.)
+    - control: 19205 - SeerControlController (start, stop, reloc, etc.)
+    - config: 19207 - SeerConfigController (set_max_speed, configure_push, etc.)
+    - other: 19210 - SeerOtherController (jack_load, jack_unload, etc.)
+    - push: 19301 - SeerPushController (configure_push, start_listening, etc.)
+    
+    Example:
+        controller = SeerController('192.168.1.123')
+        controller.connect_essential()
+        
+        # Access controllers directly
+        pos = controller.status.query_status('loc')
+        controller.task.gotarget(id="Station1")
+        controller.control.pause()
+        
+        controller.disconnect_all()
+    """
+    
+    def __init__(self, robot_ip: str = '192.168.192.5'):
+        """
+        Initialize the unified controller.
+        
+        Args:
+            robot_ip: IP address of the robot (default: 192.168.192.5)
+        """
         self.robot_ip = robot_ip
-        self.robot_status_port = 19204  # Fixed port for status queries
-        self.socket = None
-        self.connected = False
         
-        # Threading
-        self.position_thread = None
-        self.position_running = False
-        self.position_lock = threading.Lock()
+        # Initialize all specialized controllers
+        self.status = SeerStatusController(robot_ip, 19204)
+        self.task = SeerTaskController(robot_ip, 19206)
+        self.control = SeerControlController(robot_ip, 19205)
+        self.config = SeerConfigController(robot_ip, 19207)
+        self.other = SeerOtherController(robot_ip, 19210)
+        self.push = SeerPushController(robot_ip, 19301)
         
-        # Position monitoring
-        self.position_interval = 1.0  # 1 second
-        self.last_position = None
-        self.position_history = []
-        self.max_history = 100
-        
-        # Statistics
-        self.stats = {
-            'position_queries': 0,
-            'successful_queries': 0,
-            'failed_queries': 0,
-            'connection_attempts': 0,
-            'start_time': None,
-            'last_update': None
+        # Track connection status
+        self._connections = {
+            'status': False,
+            'task': False,
+            'control': False,
+            'config': False,
+            'other': False,
+            'push': False
         }
+    
+    # ========================================================================
+    # Connection Management
+    # ========================================================================
+    
+    def connect_all(self, timeout: float = 5.0) -> Dict[str, bool]:
+        """
+        Connect to all robot services.
         
-        # Status callbacks
-        self.position_callbacks = []
-        self.error_callbacks = []
+        Args:
+            timeout: Connection timeout in seconds
+            
+        Returns:
+            Dictionary showing connection status for each service
+        """
+        self._connections['status'] = self.status.connect(timeout)
+        self._connections['task'] = self.task.connect(timeout)
+        self._connections['control'] = self.control.connect(timeout)
+        self._connections['config'] = self.config.connect(timeout)
+        self._connections['other'] = self.other.connect(timeout)
+        # Note: Push controller connects separately when needed
         
-    def unpack_header(self, data: bytes) -> Dict[str, Any]:
-        """Unpack message header"""
-        if len(data) < 16:
-            raise ValueError(f"Header too short: {len(data)} bytes, expected 16")
+        return self._connections.copy()
+    
+    def connect_essential(self, timeout: float = 5.0) -> Dict[str, bool]:
+        """
+        Connect to essential services only (status, task, control).
         
-        header = struct.unpack('!BBHLH6s', data)
-        magic, version, req_id, msg_len, msg_type, reserved = header
+        Args:
+            timeout: Connection timeout in seconds
+            
+        Returns:
+            Dictionary showing connection status for essential services
+        """
+        self._connections['status'] = self.status.connect(timeout)
+        self._connections['task'] = self.task.connect(timeout)
+        self._connections['control'] = self.control.connect(timeout)
         
         return {
-            'magic': magic,
-            'version': version,
-            'req_id': req_id,
-            'msg_len': msg_len,
-            'msg_type': msg_type,
-            'reserved': reserved
+            'status': self._connections['status'],
+            'task': self._connections['task'],
+            'control': self._connections['control']
         }
     
-    def connect(self) -> bool:
-        """Connect to robot"""
-        try:
-            if self.connected:
-                return True
-                
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.settimeout(5)  # 5 second timeout
-            
-            self.socket.connect((self.robot_ip, self.robot_status_port))
-            
-            self.connected = True
-            self.stats['connection_attempts'] += 1
-            if self.stats['start_time'] is None:
-                self.stats['start_time'] = time.time()
-            
-            return True
-            
-        except Exception as e:
-            self.connected = False
-            return False
+    def disconnect_all(self):
+        """Disconnect from all robot services."""
+        self.status.disconnect()
+        self.task.disconnect()
+        self.control.disconnect()
+        self.config.disconnect()
+        self.other.disconnect()
+        self.push.stop_listening()
+        
+        for key in self._connections:
+            self._connections[key] = False
     
-    def disconnect(self):
-        """Disconnect from robot"""
-        self.connected = False
-        if self.socket:
-            try:
-                self.socket.close()
-            except:
-                pass
-            self.socket = None
+    def get_connection_status(self) -> Dict[str, bool]:
+        """Get current connection status for all services."""
+        return self._connections.copy()
     
-    def send_command(self, req_id: int, msg_type: int, msg: Dict = None, 
-                    expected_response: int = None, timeout: float = 5.0) -> Optional[Dict]:
-        """Send command to robot and receive response"""
-        if not self.connected:
-            return None
-        
-        try:
-            # Create and send request using official packMasg function
-            request_msg = packMasg(req_id, msg_type, msg)
-            self.socket.send(request_msg)
-            
-            # Receive response header
-            self.socket.settimeout(timeout)
-            header_data = self.socket.recv(16)
-            
-            if not header_data:
-                return None
-            
-            # Parse header
-            header = self.unpack_header(header_data)
-            
-            # Validate response
-            if header['magic'] != 0x5A:  # Magic byte constant
-                return None
-            
-            # Receive JSON data if present
-            json_data = {}
-            if header['msg_len'] > 0:
-                json_bytes = b''
-                remaining = header['msg_len']
-                
-                while remaining > 0:
-                    chunk_size = min(1024, remaining)
-                    chunk = self.socket.recv(chunk_size)
-                    
-                    if not chunk:
-                        break
-                    
-                    json_bytes += chunk
-                    remaining -= len(chunk)
-                
-                # Parse JSON
-                try:
-                    json_str = json_bytes.decode('utf-8')
-                    json_data = json.loads(json_str)
-                except Exception as e:
-                    return None
-            
-            return json_data
-            
-        except socket.timeout:
-            return None
-        except Exception as e:
-            self.connected = False
-            return None
+    # ========================================================================
+    # Statistics and Information
+    # ========================================================================
     
-    def query_position(self) -> Optional[Dict]:
-        """Query robot position"""
-        self.stats['position_queries'] += 1
+    def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get statistics from all controllers.
         
-        result = self.send_command(1, REQUEST_POSITION, {}, RESPONSE_POSITION)
-        
-        if result is not None:
-            self.stats['successful_queries'] += 1
-            self.stats['last_update'] = time.time()
-            
-            # Just print (x, y, angle) for position packets
-            x = result.get('x', 0)
-            y = result.get('y', 0)
-            angle = result.get('angle', 0)
-            print(f"({x}, {y}, {angle})")
-            
-            # Update position data
-            with self.position_lock:
-                self.last_position = result
-                self.position_history.append({
-                    'timestamp': time.time(),
-                    'data': result.copy()
-                })
-                
-                # Limit history size
-                if len(self.position_history) > self.max_history:
-                    self.position_history.pop(0)
-            
-            # Call position callbacks
-            for callback in self.position_callbacks:
-                try:
-                    callback(result)
-                except Exception as e:
-                    pass
-            
-        else:
-            self.stats['failed_queries'] += 1
-            
-            # Call error callbacks
-            for callback in self.error_callbacks:
-                try:
-                    callback("Position query failed")
-                except Exception as e:
-                    pass
-        
-        return result
+        Returns:
+            Dictionary with stats from each controller
+        """
+        return {
+            'status': self.status.get_stats(),
+            'task': self.task.get_stats(),
+            'control': self.control.get_stats(),
+            'config': self.config.get_stats(),
+            'other': self.other.get_stats(),
+            'push': self.push.get_stats()
+        }
     
-    def position_monitor_thread(self):
-        """Position monitoring thread function"""
-        print(f"🎯 Position monitoring started (interval: {self.position_interval}s)")
+    def print_status_summary(self):
+        """Print a summary of robot status."""
+        print("="*60)
+        print("SEER Robot Status Summary")
+        print("="*60)
         
-        while self.position_running:
-            start_time = time.time()
-            
-            # Attempt to reconnect if disconnected
-            if not self.connected:
-                if not self.connect():
-                    time.sleep(self.position_interval)
-                    continue
-            
-            # Query position
-            try:
-                position = self.query_position()
-                if position is None and self.connected:
-                    # Query failed but we're still "connected", try to reconnect
-                    self.disconnect()
-                    
-            except Exception as e:
-                self.disconnect()
-            
-            # Sleep for the remaining time to maintain interval
-            elapsed = time.time() - start_time
-            sleep_time = max(0, self.position_interval - elapsed)
-            
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+        # Connection status
+        print("\n📡 Connections:")
+        for service, connected in self._connections.items():
+            status = "✅ Connected" if connected else "❌ Disconnected"
+            print(f"  {service:12s}: {status}")
+        
+        # Get location if connected
+        if self._connections['status']:
+            loc = self.status.query_status('loc')
+            if loc and loc.get('ret_code') == 0:
+                print("\n📍 Position:")
+                print(f"  X: {loc.get('x', 'N/A'):.3f} m")
+                print(f"  Y: {loc.get('y', 'N/A'):.3f} m")
+                print(f"  Angle: {loc.get('angle', 'N/A'):.3f} rad")
+        
+        # Get battery if connected
+        if self._connections['status']:
+            battery = self.status.query_status('battery')
+            if battery and battery.get('ret_code') == 0:
+                print("\n🔋 Battery:")
+                print(f"  Level: {battery.get('battery', 'N/A')}%")
+        
+        print("="*60)
     
-    def start_position_monitoring(self):
-        """Start position monitoring thread"""
-        if self.position_running:
-            print(f"⚠️  Position monitoring already running")
-            return
-        
-        self.position_running = True
-        self.position_thread = threading.Thread(target=self.position_monitor_thread, daemon=True)
-        self.position_thread.start()
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"SeerController(robot_ip='{self.robot_ip}')"
     
-    def stop_position_monitoring(self):
-        """Stop position monitoring thread"""
-        if not self.position_running:
-            return
-        
-        self.position_running = False
-        if self.position_thread:
-            self.position_thread.join(timeout=2.0)
-            self.position_thread = None
-    
-    def get_current_position(self) -> Optional[Dict]:
-        """Get the most recent position data (thread-safe)"""
-        with self.position_lock:
-            return self.last_position.copy() if self.last_position else None
-    
-    def get_position_history(self, count: int = None) -> list:
-        """Get position history (thread-safe)"""
-        with self.position_lock:
-            history = self.position_history.copy()
-            if count:
-                return history[-count:]
-            return history
-    
-    def add_position_callback(self, callback):
-        """Add position update callback"""
-        self.position_callbacks.append(callback)
-    
-    def add_error_callback(self, callback):
-        """Add error callback"""
-        self.error_callbacks.append(callback)
-    
-    def print_status(self):
-        """Print current robot status"""
-        position = self.get_current_position()
-        
-        print(f"\n🤖 SEER Robot Status")
-        print(f"=" * 50)
-        print(f"🔌 Connection: {'✅ Connected' if self.connected else '❌ Disconnected'}")
-        print(f"🎯 Monitoring: {'✅ Running' if self.position_running else '❌ Stopped'}")
-        
-        if position:
-            # Position information
-            if 'x' in position and 'y' in position:
-                x, y = position['x'], position['y']
-                print(f"📍 Position: ({x:.4f}, {y:.4f}) m")
-            
-            if 'angle' in position:
-                angle_rad = position['angle']
-                angle_deg = angle_rad * 180 / 3.14159
-                print(f"🧭 Orientation: {angle_rad:.4f} rad ({angle_deg:.2f}°)")
-            
-            if 'confidence' in position:
-                confidence = position['confidence']
-                print(f"🎯 Confidence: {confidence:.3f} ({confidence*100:.1f}%)")
-            
-            if 'current_station' in position:
-                station = position['current_station']
-                print(f"📍 Current Station: {station if station else 'None'}")
-        else:
-            print(f"📍 Position: No data available")
-        
-        # Statistics
-        runtime = time.time() - self.stats['start_time'] if self.stats['start_time'] else 0
-        success_rate = (self.stats['successful_queries'] / max(1, self.stats['position_queries'])) * 100
-        
-        print(f"\n📊 Statistics:")
-        print(f"   Runtime: {runtime:.1f}s")
-        print(f"   Position queries: {self.stats['position_queries']}")
-        print(f"   Success rate: {success_rate:.1f}%")
-        print(f"   Last update: {self.stats['last_update']}")
-    
-    def run(self):
-        """Start the robot controller and monitor position"""
-        print(f"🤖 SEER Robot Controller - Position Monitoring")
-        print(f"Target: {self.robot_ip}:{self.robot_status_port}")
-        print(f"=" * 60)
-        
-        # Connect to robot
-        if not self.connect():
-            return False
-        
-        # Start position monitoring
-        self.start_position_monitoring()
-        
-        try:
-            print(f"🎯 Position monitoring active. Press Ctrl+C to stop...")
-            # Keep the main thread alive
-            while self.position_running:
-                time.sleep(1)
-                
-        except KeyboardInterrupt:
-            print(f"\n🛑 Stopping position monitoring...")
-        finally:
-            self.stop_position_monitoring()
-            self.disconnect()
-        
-        return True
+    def __str__(self) -> str:
+        """User-friendly string representation."""
+        connected_count = sum(1 for v in self._connections.values() if v)
+        return f"SeerController({self.robot_ip}, {connected_count}/6 services connected)"
 
-# Position callback example
-def position_callback(position_data):
-    """Example position callback function"""
-    timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-    x = position_data.get('x', 'N/A')
-    y = position_data.get('y', 'N/A')
-    confidence = position_data.get('confidence', 'N/A')
-    print(f"[{timestamp}] Position Update: ({x}, {y}) confidence: {confidence}")
-
-# Error callback example
-def error_callback(error_message):
-    """Example error callback function"""
-    timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-    print(f"[{timestamp}] ❌ Error: {error_message}")
 
 def main():
-    """Main function"""
-    # Default robot settings
-    robot_ip = '192.168.1.123'
+    """
+    Interactive command-line interface for the unified controller.
+    """
+    from util import parse_command_line
     
-    # Parse command line arguments for IP address only
-    if len(sys.argv) > 1:
-        robot_ip = sys.argv[1]
+    print("🤖 SEER Unified Controller - Interactive Mode")
+    print("=" * 60)
     
-    # Create controller (port is fixed at 19204)
-    controller = SeerController(robot_ip)
+    # Create unified controller
+    robot_ip = input("Enter robot IP [192.168.1.123]: ").strip() or "192.168.1.123"
+    controller = SeerController(robot_ip=robot_ip)
+    print(f"\n✅ Controller created: {controller}")
     
-    # Run the controller
+    # Connect to essential services
+    print("\n🔌 Connecting to essential services...")
+    connections = controller.connect_essential()
+    
+    for service, connected in connections.items():
+        status = "✅" if connected else "❌"
+        print(f"  {status} {service}")
+    
+    if not any(connections.values()):
+        print("\n❌ Failed to connect to any services. Exiting.")
+        return
+    
+    # Show status summary
+    print("\n")
+    controller.print_status_summary()
+    
+    # Interactive command loop
+    print("\n" + "=" * 60)
+    print("📝 Interactive Command Mode")
+    print("=" * 60)
+    print("\nAvailable command categories:")
+    print("  Status:  query_robot_status_loc, query_battery, query_version")
+    print("  Motion:  gotarget, translate, turn, pause, resume, cancel")
+    print("  Control: start, stop, reloc, estop, standby")
+    print("  Config:  set_max_speed, set_obstacle_distance")
+    print("  Other:   jack_load, jack_unload, jack_set_height")
+    print("\nType 'help' for more info, 'status' for robot status, 'exit' to quit")
+    print("-" * 60)
+    
     try:
-        controller.run()
-    except Exception as e:
-        controller.stop_position_monitoring()
-        controller.disconnect()
-        return 1
+        while True:
+            try:
+                line = input("\n🤖 > ").strip()
+            except EOFError:
+                print("\n")
+                break
+            
+            if not line:
+                continue
+            
+            if line.lower() in ['exit', 'quit', 'q']:
+                print("👋 Exiting...")
+                break
+            
+            if line.lower() == 'help':
+                print("\nCommands:")
+                print("  status                    - Show robot status")
+                print("  query_robot_status_loc    - Query position")
+                print("  gotarget id=Station1      - Navigate to station")
+                print("  translate dist=1.0 vx=0.5 - Move forward")
+                print("  turn angle=1.57 vw=0.5    - Rotate")
+                print("  pause                     - Pause motion")
+                print("  resume                    - Resume motion")
+                print("  start                     - Start robot")
+                print("  stop                      - Stop robot")
+                continue
+            
+            if line.lower() == 'status':
+                controller.print_status_summary()
+                continue
+            
+            # Parse and execute command
+            func_name, params = parse_command_line(line)
+            
+            if not func_name:
+                print("❌ Invalid command format")
+                continue
+            
+            if not hasattr(controller, func_name):
+                print(f"❌ Unknown command: {func_name}")
+                print("   Type 'help' for available commands")
+                continue
+            
+            func = getattr(controller, func_name)
+            
+            try:
+                print(f"⚙️  Calling {func_name}({', '.join(f'{k}={v}' for k, v in params.items())})")
+                result = func(**params)
+                
+                if result is not None:
+                    ret_code = result.get('ret_code', -1)
+                    if ret_code == 0:
+                        print("✅ Command succeeded!")
+                        if len(result) > 1:
+                            print(f"   Response: {result}")
+                    else:
+                        error_msg = result.get('err_msg', 'Unknown error')
+                        print(f"❌ Command failed with code {ret_code}: {error_msg}")
+                else:
+                    print("❌ Command failed - no response received")
+                    
+            except TypeError as e:
+                print(f"❌ Invalid parameters: {e}")
+            except Exception as e:
+                print(f"❌ Error executing command: {e}")
     
-    return 0
+    except KeyboardInterrupt:
+        print("\n\n🛑 Interrupted by user")
+    
+    finally:
+        # Disconnect
+        controller.disconnect_all()
+        print("\n🔌 Disconnected from all services")
+        print("\n" + "=" * 60)
+        print("✅ Session ended!")
+        print("=" * 60)
+
 
 if __name__ == "__main__":
-    exit(main())
+    main()
