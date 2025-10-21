@@ -149,19 +149,23 @@ def test_unified_with_task_status():
             # Extract task_status value
             task_status_value = task_result.get('task_status', -1)
             
-            # Status meanings:
-            # 0 = Idle
-            # 1 = Navigating
-            # 2 = Paused
-            # 3 = Error
-            # 4 = Completed
+            # Status meanings (correct definitions):
+            # 0 = NONE
+            # 1 = WAITING (currently impossible)
+            # 2 = RUNNING
+            # 3 = SUSPENDED
+            # 4 = COMPLETED
+            # 5 = FAILED
+            # 6 = CANCELED
             status_text = {
-                0: "Idle",
-                1: "Navigating",
-                2: "Paused",
-                3: "Error",
-                4: "Completed"
-            }.get(task_status_value, "Unknown")
+                0: "NONE",
+                1: "WAITING",
+                2: "RUNNING",
+                3: "SUSPENDED",
+                4: "COMPLETED",
+                5: "FAILED",
+                6: "CANCELED"
+            }.get(task_status_value, "UNKNOWN")
             
             # Extract useful information
             target_id = task_result.get('target_id', 'N/A')
@@ -171,14 +175,44 @@ def test_unified_with_task_status():
             
             # Print compact status
             print(f"[Query #{query_count:3d}] Time: {elapsed:5.1f}s | "
-                  f"Status: {task_status_value} ({status_text:11s}) | "
+                  f"Status: {task_status_value} ({status_text:10s}) | "
                   f"Target: {target_id:10s} | Dist: {target_dist:6.2f}m | "
                   f"Finished: {len(finished_path)} | Remaining: {len(unfinished_path)}")
             
-            # Check if task is complete
-            if task_status_value == 4:
-                print("\n✅ Task completed! (task_status == 4)")
+            # Check task status - only continue if RUNNING (2)
+            if task_status_value == 2:
+                # Task is running, continue monitoring
+                pass
+            elif task_status_value == 4:
+                # Task completed successfully
+                print("\n✅ Task COMPLETED! (task_status == 4)")
                 print(f"   Finished path: {' → '.join(finished_path)}")
+                break
+            elif task_status_value == 5:
+                # Task failed
+                print("\n❌ Task FAILED! (task_status == 5)")
+                print(f"   Finished path: {' → '.join(finished_path)}")
+                print(f"   Unfinished path: {' → '.join(unfinished_path)}")
+                break
+            elif task_status_value == 6:
+                # Task canceled
+                print("\n⚠️ Task CANCELED! (task_status == 6)")
+                print(f"   Finished path: {' → '.join(finished_path)}")
+                print(f"   Unfinished path: {' → '.join(unfinished_path)}")
+                break
+            elif task_status_value == 3:
+                # Task suspended
+                print("\n⏸️ Task SUSPENDED! (task_status == 3)")
+                print(f"   Finished path: {' → '.join(finished_path)}")
+                print(f"   Unfinished path: {' → '.join(unfinished_path)}")
+                break
+            elif task_status_value == 0:
+                # Task is NONE
+                print("\n⚠️ Task status is NONE! (task_status == 0)")
+                break
+            else:
+                # Unknown status
+                print(f"\n⚠️ Unknown task status: {task_status_value}")
                 break
         else:
             print(f"[Query #{query_count:3d}] Time: {elapsed:5.1f}s | ❌ Failed to query task status")
