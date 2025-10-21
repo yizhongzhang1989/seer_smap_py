@@ -151,6 +151,109 @@ def test_gotargetlist():
     print("\n✅ Connection closed")
 
 
+def test_spin():
+    """Test gotargetlist with multi-step navigation."""
+    
+    # Robot connection details
+    robot_ip = "192.168.1.123"
+    robot_port = 19206
+    
+    # Create controller
+    print(f"Connecting to robot at {robot_ip}:{robot_port}...")
+    controller = SeerTaskController(robot_ip, robot_port)
+    
+    # Connect to robot
+    if not controller.connect():
+        print("❌ Failed to connect to robot")
+        return
+    
+    print("✅ Connected successfully\n")
+    
+    # Define the move task list as a simple list with unique task IDs
+    move_task_list = [
+        {
+            "id": "SELF_POSITION",
+            "source_id": "SELF_POSITION",
+            "task_id": task_id_gen(),
+            "operation": "JackLoad",
+        },
+        {
+            "id": "LM4",
+            "source_id": "LM2",
+            "task_id": task_id_gen(),
+            "spin": True,
+        },
+        {
+            "id": "LM6",
+            "source_id": "LM4",
+            "task_id": task_id_gen(),
+            "spin": True,
+        },
+        {
+            "id": "LM2",
+            "source_id": "LM6",
+            "task_id": task_id_gen(),
+            "spin": True,
+        },
+        {
+            "id": "SELF_POSITION",
+            "source_id": "SELF_POSITION",
+            "task_id": task_id_gen(),
+            "operation": "JackUnload",
+        },
+    ]
+    
+    print("\n" + "="*60)
+    print("Testing gotargetlist command")
+    print("="*60)
+    print("\nMove Task List:")
+    print(json.dumps(move_task_list, indent=2))
+    print("\n" + "="*60)
+    
+    # Send gotargetlist command (now just pass the list directly)
+    print("\nSending gotargetlist command...")
+    result = controller.gotargetlist(move_task_list)
+    
+    # Display result
+    print("\n" + "="*60)
+    print("Response:")
+    print("="*60)
+    if result:
+        print(json.dumps(result, indent=2))
+        
+        # Check return code
+        ret_code = result.get('ret_code', -1)
+        if ret_code == 0:
+            print("\n✅ Command successful!")
+            print(f"   Task ID: {result.get('task_id', 'N/A')}")
+            print(f"   Created: {result.get('create_on', 'N/A')}")
+        else:
+            print(f"\n⚠️ Command failed with ret_code: {ret_code}")
+            print(f"   Message: {result.get('msg', 'No error message')}")
+    else:
+        print("❌ No response received (connection or timeout error)")
+    
+    print("="*60)
+    
+    # Display statistics
+    print("\n" + "="*60)
+    print("Controller Statistics:")
+    print("="*60)
+    stats = controller.get_stats()
+    for key, value in stats.items():
+        print(f"  {key}: {value}")
+    print("="*60)
+    
+    # sleep for 10 seconds
+    import time
+    print("\nSleeping for 10 seconds to observe robot behavior...")
+    time.sleep(10)
+
+    # Close connection
+    controller.disconnect()
+    print("\n✅ Connection closed")    
+
+
 def test_move_courier():
     """Test gotargetlist with multi-step navigation."""
     
@@ -189,88 +292,15 @@ def test_move_courier():
             "task_id": task_id_gen(),
         },
         {
-            "id": "LM6",
+            "id": "LM5",
             "source_id": "LM4",
             "task_id": task_id_gen(),
-            "spin": True,
-        },
-        {
-            "id": "LM5",
-            "source_id": "LM6",
-            "task_id": task_id_gen(),
-            "spin": True,
-        },
-        {
-            "id": "SELF_POSITION",
-            "source_id": "SELF_POSITION",
-            "task_id": task_id_gen(),
-            "angle": 0,
-            "spin": True,
-        },
-        {
-            "id": "SELF_POSITION",
-            "source_id": "SELF_POSITION",
-            "task_id": task_id_gen(),
-            "spin": False,
         },
         {
             "id": "AP7",
             "source_id": "LM5",
             "task_id": task_id_gen(),
             "operation": "JackUnload"
-        },
-        {
-            "id": "SELF_POSITION",
-            "source_id": "SELF_POSITION",
-            "task_id": task_id_gen(),
-            "operation": "JackLoad",
-        },
-        {
-            "id": "LM5",
-            "source_id": "AP7",
-            "task_id": task_id_gen(),
-            "spin": True,
-        },
-        {
-            "id": "LM6",
-            "source_id": "LM5",
-            "task_id": task_id_gen(),
-            "spin": True,
-        },
-        {
-            "id": "LM4",
-            "source_id": "LM6",
-            "task_id": task_id_gen(),
-            "spin": True,
-        },
-        {
-            "id": "SELF_POSITION",
-            "source_id": "SELF_POSITION",
-            "task_id": task_id_gen(),
-            "angle": -3.1415926/2,
-            "spin": True,
-        },
-        {
-            "id": "SELF_POSITION",
-            "source_id": "SELF_POSITION",
-            "task_id": task_id_gen(),
-            "spin": False,
-        },
-        {
-            "id": "AP3",
-            "source_id": "LM4",
-            "task_id": task_id_gen(),
-            "operation": "JackUnload"
-        },
-        {
-            "id": "LM4",
-            "source_id": "AP3",
-            "task_id": task_id_gen(),
-        },
-        {
-            "id": "LM2",
-            "source_id": "LM4",
-            "task_id": task_id_gen(),
         },
     ]
     
@@ -352,52 +382,414 @@ def test_moveback_courier():
             "operation": "JackLoad",
         },
         {
-            "id": "LM5",
             "source_id": "AP7",
+            "id": "LM5",
             "task_id": task_id_gen(),
-            "spin": True,
         },
         {
-            "id": "LM6",
             "source_id": "LM5",
-            "task_id": task_id_gen(),
-            "spin": True,
-        },
-        {
             "id": "LM4",
-            "source_id": "LM6",
             "task_id": task_id_gen(),
-            "spin": True,
         },
         {
-            "id": "SELF_POSITION",
-            "source_id": "SELF_POSITION",
-            "task_id": task_id_gen(),
-            "angle": -3.1415926/2,
-            "spin": True,
-        },
-        {
-            "id": "SELF_POSITION",
-            "source_id": "SELF_POSITION",
-            "task_id": task_id_gen(),
-            "spin": False,
-        },
-        {
-            "id": "AP3",
             "source_id": "LM4",
+            "id": "AP3",
             "task_id": task_id_gen(),
             "operation": "JackUnload"
         },
         {
-            "id": "LM4",
             "source_id": "AP3",
+            "id": "LM4",
             "task_id": task_id_gen(),
         },
         {
-            "id": "LM2",
             "source_id": "LM4",
+            "id": "LM2",
             "task_id": task_id_gen(),
         },
+    ]
+    
+    print("\n" + "="*60)
+    print("Testing gotargetlist command")
+    print("="*60)
+    print("\nMove Task List:")
+    print(json.dumps(move_task_list, indent=2))
+    print("\n" + "="*60)
+    
+    # Send gotargetlist command (now just pass the list directly)
+    print("\nSending gotargetlist command...")
+    result = controller.gotargetlist(move_task_list)
+    
+    # Display result
+    print("\n" + "="*60)
+    print("Response:")
+    print("="*60)
+    if result:
+        print(json.dumps(result, indent=2))
+        
+        # Check return code
+        ret_code = result.get('ret_code', -1)
+        if ret_code == 0:
+            print("\n✅ Command successful!")
+            print(f"   Task ID: {result.get('task_id', 'N/A')}")
+            print(f"   Created: {result.get('create_on', 'N/A')}")
+        else:
+            print(f"\n⚠️ Command failed with ret_code: {ret_code}")
+            print(f"   Message: {result.get('msg', 'No error message')}")
+    else:
+        print("❌ No response received (connection or timeout error)")
+    
+    print("="*60)
+    
+    # Display statistics
+    print("\n" + "="*60)
+    print("Controller Statistics:")
+    print("="*60)
+    stats = controller.get_stats()
+    for key, value in stats.items():
+        print(f"  {key}: {value}")
+    print("="*60)
+    
+    # sleep for 10 seconds
+    import time
+    print("\nSleeping for 10 seconds to observe robot behavior...")
+    time.sleep(10)
+
+    # Close connection
+    controller.disconnect()
+    print("\n✅ Connection closed")    
+
+
+def test_move_arm_dock2rack():
+    """Test gotargetlist with multi-step navigation."""
+    
+    # Robot connection details
+    robot_ip = "192.168.1.123"
+    robot_port = 19206
+    
+    # Create controller
+    print(f"Connecting to robot at {robot_ip}:{robot_port}...")
+    controller = SeerTaskController(robot_ip, robot_port)
+    
+    # Connect to robot
+    if not controller.connect():
+        print("❌ Failed to connect to robot")
+        return
+    
+    print("✅ Connected successfully\n")
+    
+    # Define the move task list as a simple list with unique task IDs
+    move_task_list = [
+        {
+            "source_id": "LM9",
+            "id": "AP8",
+            "task_id": task_id_gen(),
+            "recognize": True,
+            "operation": "JackLoad"
+        },
+        {
+            "source_id": "AP8",
+            "id": "LM9",
+            "task_id": task_id_gen(),
+        },
+        {
+            "source_id": "LM9",
+            "id": "LM5",
+            "task_id": task_id_gen(),
+            "spin": True,
+        },
+        {
+            "source_id": "LM5",
+            "id": "AP10",
+            "task_id": task_id_gen(),
+            "spin": True,
+            "operation": "JackUnload"
+        },
+    ]
+    
+    print("\n" + "="*60)
+    print("Testing gotargetlist command")
+    print("="*60)
+    print("\nMove Task List:")
+    print(json.dumps(move_task_list, indent=2))
+    print("\n" + "="*60)
+    
+    # Send gotargetlist command (now just pass the list directly)
+    print("\nSending gotargetlist command...")
+    result = controller.gotargetlist(move_task_list)
+    
+    # Display result
+    print("\n" + "="*60)
+    print("Response:")
+    print("="*60)
+    if result:
+        print(json.dumps(result, indent=2))
+        
+        # Check return code
+        ret_code = result.get('ret_code', -1)
+        if ret_code == 0:
+            print("\n✅ Command successful!")
+            print(f"   Task ID: {result.get('task_id', 'N/A')}")
+            print(f"   Created: {result.get('create_on', 'N/A')}")
+        else:
+            print(f"\n⚠️ Command failed with ret_code: {ret_code}")
+            print(f"   Message: {result.get('msg', 'No error message')}")
+    else:
+        print("❌ No response received (connection or timeout error)")
+    
+    print("="*60)
+    
+    # Display statistics
+    print("\n" + "="*60)
+    print("Controller Statistics:")
+    print("="*60)
+    stats = controller.get_stats()
+    for key, value in stats.items():
+        print(f"  {key}: {value}")
+    print("="*60)
+    
+    # sleep for 10 seconds
+    import time
+    print("\nSleeping for 10 seconds to observe robot behavior...")
+    time.sleep(10)
+
+    # Close connection
+    controller.disconnect()
+    print("\n✅ Connection closed")    
+
+
+def test_move_arm_rack2side():
+    """Test gotargetlist with multi-step navigation."""
+    
+    # Robot connection details
+    robot_ip = "192.168.1.123"
+    robot_port = 19206
+    
+    # Create controller
+    print(f"Connecting to robot at {robot_ip}:{robot_port}...")
+    controller = SeerTaskController(robot_ip, robot_port)
+    
+    # Connect to robot
+    if not controller.connect():
+        print("❌ Failed to connect to robot")
+        return
+    
+    print("✅ Connected successfully\n")
+    
+    # Define the move task list as a simple list with unique task IDs
+    move_task_list = [
+        {
+            "source_id": "SELF_POSITION",
+            "id": "SELF_POSITION",
+            "task_id": task_id_gen(),
+            "operation": "JackLoad",
+        },
+        {
+            "source_id": "AP10",
+            "id": "LM12",
+            "task_id": task_id_gen(),
+            "spin": True,
+        },
+        {
+            "source_id": "LM12",
+            "id": "AP11",
+            "task_id": task_id_gen(),
+            "operation": "JackUnload"
+        },
+    ]
+    
+    print("\n" + "="*60)
+    print("Testing gotargetlist command")
+    print("="*60)
+    print("\nMove Task List:")
+    print(json.dumps(move_task_list, indent=2))
+    print("\n" + "="*60)
+    
+    # Send gotargetlist command (now just pass the list directly)
+    print("\nSending gotargetlist command...")
+    result = controller.gotargetlist(move_task_list)
+    
+    # Display result
+    print("\n" + "="*60)
+    print("Response:")
+    print("="*60)
+    if result:
+        print(json.dumps(result, indent=2))
+        
+        # Check return code
+        ret_code = result.get('ret_code', -1)
+        if ret_code == 0:
+            print("\n✅ Command successful!")
+            print(f"   Task ID: {result.get('task_id', 'N/A')}")
+            print(f"   Created: {result.get('create_on', 'N/A')}")
+        else:
+            print(f"\n⚠️ Command failed with ret_code: {ret_code}")
+            print(f"   Message: {result.get('msg', 'No error message')}")
+    else:
+        print("❌ No response received (connection or timeout error)")
+    
+    print("="*60)
+    
+    # Display statistics
+    print("\n" + "="*60)
+    print("Controller Statistics:")
+    print("="*60)
+    stats = controller.get_stats()
+    for key, value in stats.items():
+        print(f"  {key}: {value}")
+    print("="*60)
+    
+    # sleep for 10 seconds
+    import time
+    print("\nSleeping for 10 seconds to observe robot behavior...")
+    time.sleep(10)
+
+    # Close connection
+    controller.disconnect()
+    print("\n✅ Connection closed")    
+
+
+def test_move_arm_side2rack():
+    """Test gotargetlist with multi-step navigation."""
+    
+    # Robot connection details
+    robot_ip = "192.168.1.123"
+    robot_port = 19206
+    
+    # Create controller
+    print(f"Connecting to robot at {robot_ip}:{robot_port}...")
+    controller = SeerTaskController(robot_ip, robot_port)
+    
+    # Connect to robot
+    if not controller.connect():
+        print("❌ Failed to connect to robot")
+        return
+    
+    print("✅ Connected successfully\n")
+    
+    # Define the move task list as a simple list with unique task IDs
+    move_task_list = [
+        {
+            "source_id": "SELF_POSITION",
+            "id": "SELF_POSITION",
+            "task_id": task_id_gen(),
+            "operation": "JackLoad"
+        },
+        {
+            "source_id": "AP11",
+            "id": "LM12",
+            "task_id": task_id_gen(),
+            "spin": True,
+        },
+        {
+            "source_id": "LM12",
+            "id": "AP10",
+            "task_id": task_id_gen(),
+            "spin": True,
+            "operation": "JackUnload"
+        },
+    ]
+    
+    print("\n" + "="*60)
+    print("Testing gotargetlist command")
+    print("="*60)
+    print("\nMove Task List:")
+    print(json.dumps(move_task_list, indent=2))
+    print("\n" + "="*60)
+    
+    # Send gotargetlist command (now just pass the list directly)
+    print("\nSending gotargetlist command...")
+    result = controller.gotargetlist(move_task_list)
+    
+    # Display result
+    print("\n" + "="*60)
+    print("Response:")
+    print("="*60)
+    if result:
+        print(json.dumps(result, indent=2))
+        
+        # Check return code
+        ret_code = result.get('ret_code', -1)
+        if ret_code == 0:
+            print("\n✅ Command successful!")
+            print(f"   Task ID: {result.get('task_id', 'N/A')}")
+            print(f"   Created: {result.get('create_on', 'N/A')}")
+        else:
+            print(f"\n⚠️ Command failed with ret_code: {ret_code}")
+            print(f"   Message: {result.get('msg', 'No error message')}")
+    else:
+        print("❌ No response received (connection or timeout error)")
+    
+    print("="*60)
+    
+    # Display statistics
+    print("\n" + "="*60)
+    print("Controller Statistics:")
+    print("="*60)
+    stats = controller.get_stats()
+    for key, value in stats.items():
+        print(f"  {key}: {value}")
+    print("="*60)
+    
+    # sleep for 10 seconds
+    import time
+    print("\nSleeping for 10 seconds to observe robot behavior...")
+    time.sleep(10)
+
+    # Close connection
+    controller.disconnect()
+    print("\n✅ Connection closed")    
+
+
+def test_move_arm_rack2dock():
+    """Test gotargetlist with multi-step navigation."""
+    
+    # Robot connection details
+    robot_ip = "192.168.1.123"
+    robot_port = 19206
+    
+    # Create controller
+    print(f"Connecting to robot at {robot_ip}:{robot_port}...")
+    controller = SeerTaskController(robot_ip, robot_port)
+    
+    # Connect to robot
+    if not controller.connect():
+        print("❌ Failed to connect to robot")
+        return
+    
+    print("✅ Connected successfully\n")
+    
+    # Define the move task list as a simple list with unique task IDs
+    move_task_list = [
+        {
+            "source_id": "SELF_POSITION",
+            "id": "SELF_POSITION",
+            "task_id": task_id_gen(),
+            "operation": "JackLoad",
+        },
+        {
+            "source_id": "AP10",
+            "id": "LM5",
+            "task_id": task_id_gen(),
+            "spin": True,
+        },
+        {
+            "source_id": "LM5",
+            "id": "LM9",
+            "task_id": task_id_gen(),
+            "spin": True,
+        },
+        {
+            "source_id": "LM9",
+            "id": "AP8",
+            "task_id": task_id_gen(),
+            "operation": "JackUnload"
+        },
+        {           
+            "source_id": "AP8",
+            "id": "LM9",
+            "task_id": task_id_gen(),
+        }
     ]
     
     print("\n" + "="*60)
@@ -454,6 +846,16 @@ def test_moveback_courier():
 if __name__ == "__main__":
     # test_gotargetlist()
 
-    test_move_courier()
+    # test_spin()
+
+    # test_move_courier()
 
     # test_moveback_courier()
+
+    # test_move_arm_dock2rack()
+
+    # test_move_arm_rack2side()
+
+    test_move_arm_side2rack()
+
+    # test_move_arm_rack2dock()
